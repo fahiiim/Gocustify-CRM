@@ -45,6 +45,25 @@ async def update_ai_call_settings(
     return success_response(data=data, message="AI call settings updated successfully.")
 
 
+@router.get("/industry-templates")
+async def get_industry_templates(
+    current_user: dict = Depends(require_permission("calls", "view")),
+) -> dict:
+    from app.services.smartflow.industry_templates import list_all_industry_presets
+    data = list_all_industry_presets()
+    return success_response(data=data, message="Industry templates fetched successfully.")
+
+
+@router.get("/industry-templates/{industry_name}")
+async def get_industry_template_details(
+    industry_name: str,
+    current_user: dict = Depends(require_permission("calls", "view")),
+) -> dict:
+    from app.services.smartflow.industry_templates import get_industry_preset
+    data = get_industry_preset(industry_name)
+    return success_response(data=data, message="Industry preset fetched successfully.")
+
+
 class KnowledgeApprovalRequest(BaseModel):
     approved: bool
 

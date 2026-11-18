@@ -1,4 +1,10 @@
-const { withAndroidManifest, withMainActivity, withAppDelegate, withDangerousMod, withAppBuildGradle } = require('@expo/config-plugins');
+let configPlugins = {};
+try {
+  configPlugins = require('@expo/config-plugins');
+} catch {
+  // Expo build tools loaded during expo prebuild; safe fallback for test runners
+}
+const { withAndroidManifest, withMainActivity, withAppDelegate, withDangerousMod, withAppBuildGradle } = configPlugins;
 const fs = require('node:fs/promises');
 const path = require('node:path');
 

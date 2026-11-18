@@ -289,3 +289,45 @@ def test_whatsapp_cloud_media_and_button_messages(client, mock_db, monkeypatch):
     assert response.json()["data"]["processed"] == 2  # the reaction is skipped
     assert asyncio.run(mock_db.messages.find_one({"provider_event_id": "w-img"}))["content"] == "[Image] receipt"
     assert asyncio.run(mock_db.messages.find_one({"provider_event_id": "w-btn"}))["content"] == "Yes please"
+
+
+def test_meta_feed_comment_webhook_records_inbound_message(client, mock_db, monkeypatch):
+    monkeypatch.setattr(settings, "META_CLIENT_SECRET", None)
+    user_id = asyncio.run(_create_user(mock_db, email="meta-feed@example.com"))
+    _connect(mock_db, user_id, "facebook_messenger", "PAGE_FEED")
+
+    feed_payload = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "PAGE_FEED",
+                "time": 1758900000000,
+                "changes": [
+                    {
+                        "field": "feed",
+                        "value": {
+                            "item": "comment",
+                            "verb": "add",
+                            "comment_id": "cmt_fb_1",
+                            "message": "Do you offer emergency dental services?",
+                            "from": {"id": "USER_FB_1", "name": "Sarah Connor"},
+                            "created_time": 1758900000,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = client.post(
+        WEBHOOK.format(platform="facebook_messenger"),
+        json=feed_payload,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["processed"] == 1
+    stored = asyncio.run(mock_db.messages.find_one({"provider_event_id": "cmt_fb_1"}))
+    assert stored is not None
+    assert stored["content"] == "Do you offer emergency dental services?"
+    assert stored["platform"] == "facebook_messenger"
+

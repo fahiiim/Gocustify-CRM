@@ -61,3 +61,28 @@ def test_document_create_rename_and_delete_flow(client, mock_db) -> None:
     list_after_delete = client.get("/api/v1/smartflow/documents", headers=headers)
     remaining = list_after_delete.json()["data"]["items"] if isinstance(list_after_delete.json()["data"], dict) else list_after_delete.json()["data"]
     assert all(item["id"] != document_id for item in remaining)
+
+
+def test_team_member_can_access_organization_documents(client, mock_db) -> None:
+    owner_headers = _auth_headers(client, mock_db, email="org-owner@example.com")
+    staff_headers = _auth_headers(client, mock_db, email="org-staff@example.com")
+
+    # Bind both users to the same organization_id
+    org_id = "shared-org-12345"
+    asyncio.run(mock_db.users.update_one({"email": "org-owner@example.com"}, {"$set": {"organization_id": org_id}}))
+    asyncio.run(mock_db.users.update_one({"email": "org-staff@example.com"}, {"$set": {"organization_id": org_id}}))
+
+    # Owner creates an org-wide document
+    create_response = client.post(
+        "/api/v1/smartflow/documents",
+        headers=owner_headers,
+        json={"name": "Company Knowledge Handbook", "type": "others", "file_url": "https://files.example.com/handbook.pdf"},
+    )
+    assert create_response.status_code == 201
+    doc_id = create_response.json()["data"]["id"]
+
+    # Staff member in the same organization can list and retrieve it
+    staff_list_res = client.get("/api/v1/smartflow/documents", headers=staff_headers)
+    assert staff_list_res.status_code == 200
+    items = staff_list_res.json()["data"]["items"]
+    assert any(item["id"] == doc_id and item["name"] == "Company Knowledge Handbook" for item in items)

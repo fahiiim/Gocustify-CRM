@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Users, DollarSign, CreditCard, Clock, UserX, UserCheck } from "lucide-react";
 import RecentUsersTable from "../../Components/Dashboard/RecentUsersTable";
 import UserRatioChart from "../../Components/Dashboard/UserRatioChart";
 import {
@@ -190,57 +191,171 @@ const Dashboard = () => {
     0
   );
 
-  const usersGrowth = overview?.usersGrowth ?? overview?.userGrowthPercent ?? 12.5;
-  const revenueGrowth = overview?.revenueGrowth ?? overview?.revenueGrowthPercent ?? 8.2;
+  const payingCustomers = firstFinite(
+    getStatByLabel("Paying Customers"),
+    overview?.payingCustomers,
+    overview?.customerCounts?.paying,
+    overview?.paying_customers,
+    0
+  );
+
+  const nonPayingUsers = firstFinite(
+    getStatByLabel("Non-Paying Customers"),
+    getStatByLabel("Non-Paying Users"),
+    overview?.nonPayingUsers,
+    overview?.customerCounts?.non_paying,
+    overview?.non_paying,
+    0
+  );
+
+  const activeTrials = firstFinite(
+    getStatByLabel("Active Free-Trial Customers"),
+    getStatByLabel("Active Trials"),
+    overview?.activeTrials,
+    overview?.customerCounts?.trial,
+    overview?.active_trials,
+    0
+  );
+
+  const expiredTrials = firstFinite(
+    getStatByLabel("Expired Trials"),
+    getStatByLabel("Total Registered Customers"),
+    overview?.expiredTrials,
+    overview?.totalRegistered,
+    overview?.customerCounts?.total,
+    0
+  );
+
+  const usersGrowth = overview?.usersGrowth ?? overview?.userGrowthPercent ?? null;
+  const revenueGrowth = overview?.revenueGrowth ?? overview?.revenueGrowthPercent ?? null;
 
   const chartData = useMemo(() => normalizeMonthData(analytics), [analytics]);
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-4">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="p-6 bg-white border shadow-sm rounded-2xl border-slate-100">
-          <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
-            {isSuperAdmin ? "Super Admin Overview" : "Overview"}
-          </p>
-          <div className="mt-3 flex items-end justify-between">
-            <div>
-              <p className="text-3xl font-bold text-slate-900">
-                {loading ? "..." : totalUsers.toLocaleString()}
-              </p>
-              <p className="mt-1 text-base font-semibold text-slate-700">
-                {isSuperAdmin ? "Total Platform Users" : "Total Users"}
-              </p>
-            </div>
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {/* Card 1: Total Platform Users */}
+        <div className="p-5 bg-white border shadow-xs rounded-2xl border-slate-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+              <Users size={18} />
+            </span>
             {usersGrowth !== undefined && usersGrowth !== null ? (
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                {usersGrowth > 0 ? "+" : ""}
-                {usersGrowth}%
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                {usersGrowth > 0 ? "+" : ""}{usersGrowth}%
               </span>
             ) : null}
+          </div>
+          <div className="mt-3">
+            <p className="text-2xl font-bold text-slate-900">
+              {loading ? "..." : totalUsers.toLocaleString()}
+            </p>
+            <p className="text-xs font-semibold text-slate-600 mt-0.5 truncate">
+              {isSuperAdmin ? "Total Platform Users" : "Total Users"}
+            </p>
           </div>
         </div>
 
-        <div className="p-6 bg-white border shadow-sm rounded-2xl border-slate-100">
-          <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
-            {isSuperAdmin ? "Super Admin Performance" : "Performance"}
-          </p>
-          <div className="mt-3 flex items-end justify-between">
-            <div>
-              <p className="text-3xl font-bold text-slate-900">
-                {loading ? "..." : typeof totalRevenue === "number" ? `$${totalRevenue.toLocaleString()}` : totalRevenue}
-              </p>
-              <p className="mt-1 text-base font-semibold text-slate-700">
-                {isSuperAdmin ? "Platform Revenue" : "Total Revenue"}
-              </p>
-            </div>
+        {/* Card 2: Platform Revenue */}
+        <div className="p-5 bg-white border shadow-xs rounded-2xl border-slate-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
+              <DollarSign size={18} />
+            </span>
             {revenueGrowth !== undefined && revenueGrowth !== null ? (
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                {revenueGrowth > 0 ? "+" : ""}
-                {revenueGrowth}%
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                {revenueGrowth > 0 ? "+" : ""}{revenueGrowth}%
               </span>
             ) : null}
           </div>
-          <p className="mt-3 text-sm text-slate-500">Revenue growth compared with last month.</p>
+          <div className="mt-3">
+            <p className="text-2xl font-bold text-slate-900 truncate">
+              {loading ? "..." : typeof totalRevenue === "number" ? `$${totalRevenue.toLocaleString()}` : totalRevenue}
+            </p>
+            <p className="text-xs font-semibold text-slate-600 mt-0.5 truncate">
+              {isSuperAdmin ? "Platform Revenue" : "Total Revenue"}
+            </p>
+          </div>
+        </div>
+
+        {/* Card 3: Paying Customers */}
+        <div className="p-5 bg-white border shadow-xs rounded-2xl border-slate-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-purple-50 text-purple-600">
+              <CreditCard size={18} />
+            </span>
+            <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold uppercase text-purple-700 tracking-wider">
+              Paid
+            </span>
+          </div>
+          <div className="mt-3">
+            <p className="text-2xl font-bold text-slate-900">
+              {loading ? "..." : payingCustomers.toLocaleString()}
+            </p>
+            <p className="text-xs font-semibold text-slate-600 mt-0.5 truncate">
+              Paying Customers
+            </p>
+          </div>
+        </div>
+
+        {/* Card 4: Active Free Trials */}
+        <div className="p-5 bg-white border shadow-xs rounded-2xl border-slate-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-blue-50 text-blue-600">
+              <Clock size={18} />
+            </span>
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-700 tracking-wider">
+              Trial
+            </span>
+          </div>
+          <div className="mt-3">
+            <p className="text-2xl font-bold text-slate-900">
+              {loading ? "..." : activeTrials.toLocaleString()}
+            </p>
+            <p className="text-xs font-semibold text-slate-600 mt-0.5 truncate">
+              Active Trials
+            </p>
+          </div>
+        </div>
+
+        {/* Card 5: Non-Paying Users */}
+        <div className="p-5 bg-white border shadow-xs rounded-2xl border-slate-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-amber-50 text-amber-600">
+              <UserX size={18} />
+            </span>
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700 tracking-wider">
+              Free
+            </span>
+          </div>
+          <div className="mt-3">
+            <p className="text-2xl font-bold text-slate-900">
+              {loading ? "..." : nonPayingUsers.toLocaleString()}
+            </p>
+            <p className="text-xs font-semibold text-slate-600 mt-0.5 truncate">
+              Non-Paying Users
+            </p>
+          </div>
+        </div>
+
+        {/* Card 6: Registered / Expired Trials */}
+        <div className="p-5 bg-white border shadow-xs rounded-2xl border-slate-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-cyan-50 text-cyan-600">
+              <UserCheck size={18} />
+            </span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600 tracking-wider">
+              {isSuperAdmin ? "Total" : "Expired"}
+            </span>
+          </div>
+          <div className="mt-3">
+            <p className="text-2xl font-bold text-slate-900">
+              {loading ? "..." : expiredTrials.toLocaleString()}
+            </p>
+            <p className="text-xs font-semibold text-slate-600 mt-0.5 truncate">
+              {isSuperAdmin ? "Registered Customers" : "Expired Trials"}
+            </p>
+          </div>
         </div>
       </div>
 

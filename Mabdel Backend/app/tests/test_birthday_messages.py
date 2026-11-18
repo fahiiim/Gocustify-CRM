@@ -73,3 +73,43 @@ def test_already_sent_today_is_not_sent_twice(mock_db, monkeypatch):
 
     assert count == 0
     assert sent == []
+
+
+def test_crm_contact_whose_birthday_is_today_gets_a_message(mock_db, monkeypatch):
+    sent = _fake_email_service(monkeypatch)
+    today = utc_now().date()
+    dob = today.replace(year=1995).isoformat()
+    contact_doc = {
+        "name": "Alice Johnson",
+        "email": "alice.crm@example.com",
+        "dob": dob,
+        "created_at": utc_now(),
+    }
+    asyncio.run(mock_db.contacts.insert_one(contact_doc))
+
+    count = asyncio.run(_send_due_birthday_messages(mock_db))
+
+    assert count == 1
+    assert len(sent) == 1
+    assert sent[0]["email"] == "alice.crm@example.com"
+    assert "Alice Johnson" in sent[0]["text"]
+
+    updated_contact = asyncio.run(mock_db.contacts.find_one({"email": "alice.crm@example.com"}))
+    assert updated_contact["last_birthday_message_sent_date"] == today.isoformat()
+
+
+def test_crm_contact_whose_birthday_is_not_today_gets_nothing(mock_db, monkeypatch):
+    sent = _fake_email_service(monkeypatch)
+    not_today = (utc_now() + timedelta(days=10)).date().replace(year=1992).isoformat()
+    contact_doc = {
+        "name": "Bob Later",
+        "email": "bob.later@example.com",
+        "dob": not_today,
+        "created_at": utc_now(),
+    }
+    asyncio.run(mock_db.contacts.insert_one(contact_doc))
+
+    count = asyncio.run(_send_due_birthday_messages(mock_db))
+
+    assert count == 0
+    assert sent == []

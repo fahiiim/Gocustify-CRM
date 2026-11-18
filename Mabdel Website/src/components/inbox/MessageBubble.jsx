@@ -1,4 +1,4 @@
-import { AlertCircle, Check, CheckCheck, FileText, Forward, Loader2, Reply, RotateCcw } from 'lucide-react';
+import { AlertCircle, Check, CheckCheck, FileText, Forward, Loader2, Reply, RotateCcw, Sparkles } from 'lucide-react';
 import { formatBubbleTime } from './inboxUtils';
 import { withAuth } from './privateMediaAuth';
 
@@ -85,9 +85,35 @@ export default function MessageBubble({ message, onReply, onForward, onRetry, re
             </div>
           ) : null}
           {message.content ? <p className="whitespace-pre-wrap break-words text-left">{message.content}</p> : null}
+          {(message.voice_url || message.audio_url) && !attachments.some((a) => a.url === (message.voice_url || message.audio_url)) ? (
+            <div className="mt-2 flex flex-col gap-1">
+              <audio controls preload="metadata" src={withAuth(message.voice_url || message.audio_url)} className="w-full max-w-[240px]" />
+            </div>
+          ) : null}
           {attachments.map((attachment, index) => (
             <Attachment key={`${attachment.url}-${index}`} attachment={attachment} outbound={outbound} t={t} />
           ))}
+          {message.ai_summary ? (
+            <div className="mt-2.5 flex flex-col gap-1 rounded-xl border border-purple-500/30 bg-purple-950/40 p-2 text-[11px] text-purple-200">
+              <div className="flex items-center gap-1.5 font-bold text-[#c084fc]">
+                <Sparkles size={12} className="shrink-0" />
+                <span>AI Summary</span>
+                {typeof message.ai_summary === 'object' && message.ai_summary.intent ? (
+                  <span className="rounded-full bg-purple-900/80 px-2 py-0.5 text-[10px] text-purple-300">
+                    {message.ai_summary.intent}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-slate-300">
+                {typeof message.ai_summary === 'object' ? (message.ai_summary.summary || message.ai_summary.text) : message.ai_summary}
+              </p>
+            </div>
+          ) : null}
+          {message.sender_requirement ? (
+            <div className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-950/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+              <span>Requirement: {message.sender_requirement}</span>
+            </div>
+          ) : null}
           <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] font-semibold ${outbound ? 'text-white/70' : 'text-slate-500'}`}>
             <span>{formatBubbleTime(message.timestamp)}</span>
             {outbound && !failed ? <StatusIcon status={message.status} t={t} /> : null}

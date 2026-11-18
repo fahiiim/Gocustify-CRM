@@ -241,7 +241,13 @@ async def provision_owner_from_checkout_session(session: dict, db: AsyncIOMotorD
 
     from app.api.v1.endpoints.subscription import _provision_number_and_notify
 
-    await _provision_number_and_notify(new_user_id, db)
+    try:
+        await _provision_number_and_notify(new_user_id, db)
+    except Exception:
+        logger.exception(
+            "subscription-signup webhook: account %s created but phone provisioning or notification failed",
+            new_user_id,
+        )
 
 
 async def sync_subscription_status(subscription: dict, db: AsyncIOMotorDatabase) -> None:
@@ -270,3 +276,68 @@ async def sync_subscription_status(subscription: dict, db: AsyncIOMotorDatabase)
         {"_id": user["_id"]},
         {"$set": {"subscription_status": mapped_status, "trial_ends_at": trial_ends_at, "updated_at": _utc_now()}},
     )
+
+
+async def upgrade_subscription_tier(
+    db: AsyncIOMotorDatabase,
+    user_id: str,
+    new_tier: str,
+    proration_behavior: str = "create_prorations",
+) -> dict:
+    """Upgrades or changes an active subscription tier mid-cycle with explicit proration behavior."""
+    tier = (new_tier or "").strip().lower()
+    if tier not in _TIER_PRICE_ENV:
+        raise AppException(
+            status_code=400,
+            code="INVALID_TIER",
+            message=f"Invalid tier '{new_tier}'. Allowed: {list(_TIER_PRICE_ENV.keys())}",
+        )
+
+    from bson import ObjectId
+    user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
+    user = await db.users.find_one({"_id": user_oid})
+    if not user:
+        raise AppException(status_code=404, code="USER_NOT_FOUND", message="User not found.")
+
+    subscription_id = user.get("stripe_subscription_id")
+    if not subscription_id:
+        raise AppException(
+            status_code=400,
+            code="NO_ACTIVE_SUBSCRIPTION",
+            message="User has no active Stripe subscription.",
+        )
+
+    client = _client()
+    try:
+        sub = client.subscriptions.retrieve(subscription_id)
+        sub_items = sub.get("items", {}).get("data", []) if isinstance(sub, dict) else getattr(getattr(sub, "items", None), "data", [])
+        if not sub_items:
+            raise AppException(status_code=400, code="NO_SUBSCRIPTION_ITEMS", message="Subscription has no items to update.")
+
+        item_id = sub_items[0].get("id") if isinstance(sub_items[0], dict) else getattr(sub_items[0], "id", None)
+        new_price_id = _price_id_for_tier(tier)
+
+        updated_sub = client.subscriptions.update(
+            subscription_id,
+            params={
+                "items": [{"id": item_id, "price": new_price_id}],
+                "proration_behavior": proration_behavior,
+            },
+        )
+    except stripe.StripeError as exc:
+        _stripe_raise(exc, "subscription tier upgrade")
+
+    now = _utc_now()
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"subscription_tier": tier, "updated_at": now}},
+    )
+
+    status_val = updated_sub.get("status") if isinstance(updated_sub, dict) else getattr(updated_sub, "status", "active")
+    return {
+        "subscription_id": subscription_id,
+        "subscription_tier": tier,
+        "proration_behavior": proration_behavior,
+        "status": status_val,
+    }
+

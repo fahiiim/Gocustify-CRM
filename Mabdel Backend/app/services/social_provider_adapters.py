@@ -231,9 +231,19 @@ class MetaMessagingAdapter(SocialProviderAdapter):
                 if event:
                     events.append(event)
 
-            # WhatsApp Cloud API
+            # WhatsApp Cloud API & Meta Feed/Instagram Comments
             for change in entry.get("changes") or []:
-                value = (change or {}).get("value") or {}
+                if not isinstance(change, dict):
+                    continue
+
+                field = change.get("field")
+                if field in ("feed", "comments", "mentions"):
+                    comment_event = self._comment_event(change, account_id)
+                    if comment_event:
+                        events.append(comment_event)
+                    continue
+
+                value = change.get("value") or {}
                 phone_number_id = (value.get("metadata") or {}).get("phone_number_id") or account_id
                 names = {
                     contact.get("wa_id"): (contact.get("profile") or {}).get("name")
@@ -245,6 +255,53 @@ class MetaMessagingAdapter(SocialProviderAdapter):
                     if event:
                         events.append(event)
         return events
+
+    def _comment_event(self, change: dict[str, Any], account_id: str | None) -> NormalizedSocialMessage | None:
+        value = change.get("value")
+        if not isinstance(value, dict):
+            return None
+
+        field = change.get("field")
+        # Facebook feed comment or Instagram comment/mention
+        if field == "feed":
+            item_type = value.get("item")
+            verb = value.get("verb")
+            if item_type != "comment" or (verb and verb not in ("add", "edit")):
+                return None
+            comment_id = value.get("comment_id")
+            text = (value.get("message") or "").strip()
+            sender_info = value.get("from") or {}
+            sender_id = sender_info.get("id")
+            sender_name = sender_info.get("name")
+            created_time = value.get("created_time")
+        elif field in ("comments", "mentions"):
+            comment_id = value.get("id") or value.get("comment_id")
+            text = (value.get("text") or value.get("message") or "").strip()
+            sender_info = value.get("from") or {}
+            sender_id = sender_info.get("id")
+            sender_name = sender_info.get("username") or sender_info.get("name")
+            created_time = value.get("created_time") or value.get("timestamp")
+        else:
+            return None
+
+        if not comment_id or not sender_id or not text:
+            return None
+
+        # Do not process self-comments from the page itself
+        if account_id and str(sender_id) == str(account_id):
+            return None
+
+        return NormalizedSocialMessage(
+            event_id=str(comment_id),
+            contact_external_id=str(sender_id),
+            contact_name=sender_name,
+            content=text,
+            media_url=None,
+            timestamp=self._epoch_to_datetime(created_time, milliseconds=False),
+            external_account_id=account_id,
+            raw_payload=change,
+            direction="inbound",
+        )
 
     def _messaging_event(self, item: Any, account_id: str | None) -> NormalizedSocialMessage | None:
         if not isinstance(item, dict):

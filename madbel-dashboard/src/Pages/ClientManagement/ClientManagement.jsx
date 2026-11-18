@@ -29,7 +29,8 @@ const ClientManagement = () => {
     businessAddress: "",
     ownerDob: "",
     phoneNo: "",
-    businessType: ""
+    businessType: "",
+    subscriptionPlan: "starter",
   });
   const [creatingOwner, setCreatingOwner] = useState(false);
 
@@ -64,12 +65,14 @@ const ClientManagement = () => {
         owner_dob: newOwnerForm.ownerDob,
         phone_no: newOwnerForm.phoneNo,
         business_type: newOwnerForm.businessType,
+        subscription_plan: newOwnerForm.subscriptionPlan || "starter",
+        plan: newOwnerForm.subscriptionPlan || "starter",
       });
       
       message.success(`Owner account created. Login credentials have been emailed to ${newOwnerForm.email}.`);
       setShowSearch(false);
       setNewOwnerForm({ 
-        fullName: "", email: "", businessName: "", businessAddress: "", ownerDob: "", phoneNo: "", businessType: "" 
+        fullName: "", email: "", businessName: "", businessAddress: "", ownerDob: "", phoneNo: "", businessType: "", subscriptionPlan: "starter"
       });
       await loadOwners();
 
@@ -179,6 +182,18 @@ const ClientManagement = () => {
                 onChange={(e) => setNewOwnerForm({ ...newOwnerForm, businessType: e.target.value })}
               />
             </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-slate-700">Subscription Plan</label>
+              <select
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm text-slate-700"
+                value={newOwnerForm.subscriptionPlan}
+                onChange={(e) => setNewOwnerForm({ ...newOwnerForm, subscriptionPlan: e.target.value })}
+              >
+                <option value="starter">Starter (7-Day Trial)</option>
+                <option value="pro">Pro ($49/mo)</option>
+                <option value="enterprise">Enterprise ($199/mo)</option>
+              </select>
+            </div>
             <button
               onClick={handleCreateOwner}
               disabled={creatingOwner}
@@ -233,6 +248,8 @@ const ClientManagement = () => {
                   <th className="py-4 px-6 text-xs font-semibold tracking-wider text-slate-500 uppercase">Owner</th>
                   <th className="py-4 px-6 text-xs font-semibold tracking-wider text-slate-500 uppercase">Business Details</th>
                   <th className="py-4 px-6 text-xs font-semibold tracking-wider text-slate-500 uppercase">Login Email</th>
+                  <th className="py-4 px-6 text-xs font-semibold tracking-wider text-slate-500 uppercase">Plan</th>
+                  <th className="py-4 px-6 text-xs font-semibold tracking-wider text-slate-500 uppercase">Date of Birth</th>
                   <th className="py-4 px-6 text-xs font-semibold tracking-wider text-slate-500 uppercase">Status</th>
                 </tr>
               </thead>
@@ -240,6 +257,7 @@ const ClientManagement = () => {
                 {owners.map((owner) => {
                   const isExpanded = expandedRows.has(owner.id);
                   const hasSubordinates = owner.subordinates && owner.subordinates.length > 0;
+                  const displayPlan = owner.subscription_plan || owner.plan || (owner.subscription_status ? `Trial (${owner.subscription_status})` : "Starter");
                   return (
                   <Fragment key={owner.id}>
                     <tr onClick={() => hasSubordinates && toggleRow(owner.id)} className={`transition-colors ${hasSubordinates ? "cursor-pointer hover:bg-slate-50" : "hover:bg-slate-50/50"}`}>
@@ -280,6 +298,16 @@ const ClientManagement = () => {
                         </div>
                       </td>
                       <td className="py-4 px-6">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200/60 capitalize">
+                          {displayPlan}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className="text-xs font-medium text-slate-600">
+                          {owner.owner_dob || owner.dob || "-"}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6">
                         <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                           owner.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
                         }`}>
@@ -290,7 +318,7 @@ const ClientManagement = () => {
                     
                     {isExpanded && hasSubordinates && (
                       <tr>
-                        <td colSpan="4" className="p-0 border-b border-slate-100 bg-slate-50/50">
+                        <td colSpan="6" className="p-0 border-b border-slate-100 bg-slate-50/50">
                           <div className="px-16 py-4">
                             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                               <table className="w-full text-left">

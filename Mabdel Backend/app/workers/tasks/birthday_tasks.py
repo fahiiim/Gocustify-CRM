@@ -49,6 +49,50 @@ async def _send_due_birthday_messages(db) -> int:
             {"_id": owner["_id"]}, {"$set": {"last_birthday_message_sent_date": today.isoformat()}}
         )
         sent += 1
+
+    # Also query and dispatch birthday greetings to CRM contacts with registered DOB
+    contact_filter = {
+        "$or": [
+            {"dob": {"$exists": True, "$ne": None}},
+            {"date_of_birth": {"$exists": True, "$ne": None}},
+            {"birthday": {"$exists": True, "$ne": None}},
+            {"owner_dob": {"$exists": True, "$ne": None}},
+        ]
+    }
+    async for contact in db.contacts.find(contact_filter):
+        dob_val = (
+            contact.get("dob")
+            or contact.get("date_of_birth")
+            or contact.get("birthday")
+            or contact.get("owner_dob")
+        )
+        dob = _parse_dob(dob_val)
+        if not dob or dob.month != today.month or dob.day != today.day:
+            continue
+        if contact.get("last_birthday_message_sent_date") == today.isoformat():
+            continue
+
+        recipient = contact.get("email")
+        if not recipient:
+            continue
+
+        contact_name = (
+            contact.get("name")
+            or contact.get("full_name")
+            or contact.get("first_name")
+            or "Valued Customer"
+        )
+        await EmailService().send(
+            email=recipient,
+            subject="Happy Birthday!",
+            text=f"Happy birthday, {contact_name}! Wishing you a wonderful day.",
+            html=f"<p>Happy birthday, <strong>{contact_name}</strong>! Wishing you a wonderful day.</p>",
+        )
+        await db.contacts.update_one(
+            {"_id": contact["_id"]}, {"$set": {"last_birthday_message_sent_date": today.isoformat()}}
+        )
+        sent += 1
+
     return sent
 
 

@@ -7,6 +7,7 @@ import {
   Settings,
   LogOut,
   Mic,
+  Bot,
   ArrowLeft,
   Contact,
   FileText,
@@ -16,6 +17,12 @@ import {
   MessageCircle,
   Plug,
   Menu,
+  Megaphone,
+  ReceiptText,
+  Shield,
+  Search,
+  Sparkles,
+  Command,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { clsx } from 'clsx';
@@ -30,25 +37,139 @@ import { useSubscriptionStore } from '../store/useSubscriptionStore';
 import { AlertTriangle, X as CloseIcon } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import CommandPaletteModal from '../components/CommandPaletteModal';
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-// Sidebar links match the primary mobile tabs + new desktop extensions
-const primaryNavItemDefs = [
-  { key: 'layout_home', icon: LayoutDashboard, path: '/dashboard' },
-  { key: 'layout_messages', icon: MessageSquare, path: '/conversations' },
-  { key: 'layout_voice_assistant', icon: Mic, path: '/voice-conversation' },
-  { key: 'layout_ai_calling', icon: PhoneCall, path: '/calls' },
-  { key: 'layout_unified_conversation', icon: MessageCircle, path: '/unified-conversation' },
-  { key: 'layout_contacts', icon: Contact, path: '/contacts' },
-  { key: 'layout_groups', icon: Users2, path: '/groups' },
-  { key: 'layout_calendar', icon: Calendar, path: '/calendar' },
-  { key: 'layout_documents', icon: FileText, path: '/documents' },
-  { key: 'layout_integrations', icon: Plug, path: '/integrations' },
-  { key: 'layout_profile', icon: Settings, path: '/profile' },
+// Organized Navigation Categorization: structured by functional domain
+const NAV_SECTIONS = [
+  {
+    id: 'core',
+    label: 'Overview',
+    items: [
+      { key: 'layout_home', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+    ],
+  },
+  {
+    id: 'ai_voice',
+    label: 'AI & Voice Receptionist',
+    tag: 'Core AI',
+    items: [
+      {
+        key: 'layout_voice_assistant',
+        label: 'AI Receptionist',
+        icon: Bot,
+        path: '/ai-receptionist',
+        badge: 'Master',
+        badgeClass: 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-xs',
+      },
+      {
+        key: 'layout_ai_calling',
+        label: 'AI Calls & Audio',
+        icon: PhoneCall,
+        path: '/calls',
+      },
+      {
+        key: 'layout_voice_conv',
+        label: 'Spoken Voice Agent',
+        icon: Mic,
+        path: '/voice-conversation',
+      },
+    ],
+  },
+  {
+    id: 'messaging',
+    label: 'Omnichannel Inbox',
+    items: [
+      {
+        key: 'layout_messages',
+        label: 'Unified Inbox',
+        icon: MessageSquare,
+        path: '/conversations',
+        badge: 'SMS + Social',
+        badgeClass: 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30',
+      },
+      {
+        key: 'layout_bulk_messaging',
+        label: 'Bulk Campaigns',
+        icon: Megaphone,
+        path: '/bulk-messaging',
+      },
+      {
+        key: 'layout_create_post',
+        label: 'Social Post AI',
+        icon: MessageCircle,
+        path: '/create-post',
+      },
+    ],
+  },
+  {
+    id: 'crm_ops',
+    label: 'CRM & Client Ops',
+    items: [
+      {
+        key: 'layout_contacts',
+        label: 'Contacts CRM',
+        icon: Contact,
+        path: '/contacts',
+      },
+      {
+        key: 'layout_groups',
+        label: 'Groups & Audiences',
+        icon: Users2,
+        path: '/groups',
+      },
+      {
+        key: 'layout_calendar',
+        label: 'Smart Calendar',
+        icon: Calendar,
+        path: '/calendar',
+      },
+      {
+        key: 'layout_documents',
+        label: 'Documents & e-Sign',
+        icon: FileText,
+        path: '/documents',
+      },
+      {
+        key: 'layout_invoices',
+        label: 'Invoices & Billing',
+        icon: ReceiptText,
+        path: '/invoices',
+      },
+    ],
+  },
+  {
+    id: 'settings',
+    label: 'Platform & Settings',
+    items: [
+      {
+        key: 'layout_integrations',
+        label: 'Integrations Hub',
+        icon: Plug,
+        path: '/integrations',
+      },
+      {
+        key: 'layout_profile',
+        label: 'Account Settings',
+        icon: Settings,
+        path: '/profile',
+      },
+      {
+        key: 'layout_admin',
+        label: 'Super Admin',
+        icon: Shield,
+        path: '/admin',
+        adminOnly: true,
+      },
+    ],
+  },
 ];
+
+// Flat fallback mapping for top header page title resolution
+const allNavItems = NAV_SECTIONS.flatMap((s) => s.items);
 
 // Team Management dashboard is a separate app (madbel-dashboard) shared with
 // Owner/Manager only - Admin/Super Admin use their own dedicated dashboard login.
@@ -118,6 +239,7 @@ export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // The sidebar is a fixed overlay on mobile (see the <aside> below) - close it
   // whenever the route changes, so a nav tap doesn't leave the drawer open on
@@ -125,14 +247,26 @@ export default function MainLayout() {
   useEffect(() => {
     setMobileNavOpen(false);
   }, [location.pathname]);
+
+  // Global Ctrl+K / Cmd+K shortcut to open command palette
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const { t } = useLanguage();
   const unreadCount = useNotificationStore((state) => state.unreadCount);
   const syncUnreadCount = useNotificationStore((state) => state.syncUnreadCount);
   const lockNotice = useSubscriptionStore((state) => state.lockNotice);
   const clearLockNotice = useSubscriptionStore((state) => state.clearLockNotice);
   const showTeamDashboardLink = TEAM_DASHBOARD_ROLES.has(user?.role || user?.primary_role);
-
-  const primaryNavItems = primaryNavItemDefs.map((item) => ({ ...item, name: t(item.key) }));
+  const userIsAdmin = ['super_admin', 'admin'].includes(user?.role || user?.primary_role);
 
   const openTeamDashboard = () => {
     // Regression for W03: the store's `token` is only set at login and never
@@ -177,6 +311,7 @@ export default function MainLayout() {
     <TelnyxVoiceProvider>
     <div className="flex h-screen bg-[#02080B] text-white font-sans overflow-hidden">
       <CallOverlayHost />
+      <CommandPaletteModal isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       
       {/* Mobile backdrop - closes the drawer on outside tap */}
       {mobileNavOpen && (
@@ -186,9 +321,7 @@ export default function MainLayout() {
         />
       )}
 
-      {/* Sidebar - a fixed slide-in drawer below the lg breakpoint (390px viewports
-          can't fit a permanent 256px sidebar next to usable content), static on
-          desktop. */}
+      {/* Sidebar - structured with categorized sections */}
       <aside
         className={cn(
           "w-64 bg-[#0c101b] border-r border-[#243041] flex flex-col shrink-0 select-none",
@@ -198,7 +331,7 @@ export default function MainLayout() {
       >
 
         {/* Brand Logo Header */}
-        <div className="p-6 border-b border-[#243041]/40">
+        <div className="p-5 border-b border-[#243041]/40">
           <div className="flex items-center gap-3">
             <img 
               src={logoImg} 
@@ -216,33 +349,63 @@ export default function MainLayout() {
           </div>
         </div>
 
-        {/* Sidebar Nav Links (only the 5 primary tabs) */}
-        <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-          {primaryNavItems.map((item) => (
-            <NavLink
-              key={item.name}
-              to={item.path}
-              className={({ isActive }) => cn(
-                "group flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all duration-200 border border-transparent font-semibold text-sm text-left",
-                isActive 
-                  ? "bg-[#17324A] text-white border-[#3B82F6]/25 shadow-[inset_1px_1px_2px_rgba(59,130,246,0.08)]" 
-                  : "text-[#A4B0B7] hover:bg-slate-900/40 hover:text-white"
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon 
-                    size={18} 
-                    className={cn(
-                      "transition-colors", 
-                      isActive ? "text-[#60A5FA]" : "text-[#A4B0B7] group-hover:text-slate-200"
-                    )} 
-                  />
-                  <span>{item.name}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
+        {/* Sidebar Nav Links - Organised by Domain */}
+        <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+          {NAV_SECTIONS.map((section) => {
+            const visibleItems = section.items.filter((item) => !item.adminOnly || userIsAdmin);
+            if (visibleItems.length === 0) return null;
+
+            return (
+              <div key={section.id} className="space-y-1">
+                <div className="px-3 pb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <span>{section.label}</span>
+                  {section.tag && (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950/80 text-purple-300 font-bold border border-purple-500/30">
+                      {section.tag}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-0.5">
+                  {visibleItems.map((item) => (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      className={({ isActive }) => cn(
+                        "group flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-200 border border-transparent font-semibold text-xs text-left",
+                        isActive 
+                          ? "bg-[#17324A] text-white border-[#3B82F6]/30 shadow-[inset_1px_1px_2px_rgba(59,130,246,0.1)]" 
+                          : "text-[#A4B0B7] hover:bg-slate-900/50 hover:text-white"
+                      )}
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <item.icon 
+                              size={16} 
+                              className={cn(
+                                "transition-colors shrink-0", 
+                                isActive ? "text-[#60A5FA]" : "text-[#A4B0B7] group-hover:text-slate-200"
+                              )} 
+                            />
+                            <span className="truncate">{t(item.key) !== item.key ? t(item.key) : item.label}</span>
+                          </div>
+                          {item.badge && (
+                            <span className={cn(
+                              "text-[9px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shrink-0",
+                              item.badgeClass || "bg-purple-900/60 text-purple-300 border border-purple-500/20"
+                            )}>
+                              {item.badge}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         {/* Sidebar Footer */}
@@ -302,10 +465,21 @@ export default function MainLayout() {
             ) : (
               /* If on a primary page, show simple title */
               <h2 className="text-base font-extrabold text-white tracking-tight uppercase">
-                {path === '/dashboard' ? t('layout_dashboard_title') : primaryNavItems.find(i => i.path === path)?.name}
+                {path === '/dashboard' ? t('layout_dashboard_title') : (allNavItems.find(i => i.path === path)?.label || 'GoCustify')}
               </h2>
             )}
           </div>
+
+          {/* Header Center - Quick Feature Search trigger */}
+          <button
+            type="button"
+            onClick={() => setCommandPaletteOpen(true)}
+            className="hidden sm:flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-[#111927] hover:bg-[#162338] border border-[#24354f] hover:border-purple-500/50 text-xs text-slate-400 hover:text-slate-200 transition-all cursor-pointer shadow-inner"
+          >
+            <Search size={14} className="text-purple-400" />
+            <span className="font-medium">Quick find feature...</span>
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700/60 text-[10px] text-slate-400 font-mono font-bold">⌘K</kbd>
+          </button>
 
           {/* Header Right Section */}
           <div className="flex items-center gap-6">

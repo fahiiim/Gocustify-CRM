@@ -19,6 +19,7 @@ import ProfileStack from "./ProfileStack";
 import MicStack from "./MicStack";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAppLanguage } from "../context/LanguageContext";
+import useUserRole from "../hooks/useUserRole";
 
 const Tab = createBottomTabNavigator();
 
@@ -57,6 +58,7 @@ const MicTabIcon = ({ focused }) => (
 
 const BottomNavigator = () => {
   const { t } = useAppLanguage();
+  const { isStaff, isOwner, isManager, role } = useUserRole();
 
   return (
     <SafeAreaView style={styles.root}>

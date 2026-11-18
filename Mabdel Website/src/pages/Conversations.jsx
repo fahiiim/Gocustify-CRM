@@ -7,13 +7,16 @@ import {
   Archive,
   ArchiveRestore,
   CheckCheck,
+  Forward,
   Loader2,
   MessageSquare,
+  MessageSquareText,
   Mic,
   MicOff,
   Paperclip,
+  Phone,
+  Plus,
   Reply,
-  Forward,
   Search,
   Send,
   Sparkles,
@@ -41,6 +44,7 @@ const PLATFORM_COLORS = {
 
 const FILTER_OPTION_DEFS = [
   { key: 'all', labelKey: 'conv_filter_all' },
+  { key: 'sms', label: 'SMS' },
   { key: 'unread', labelKey: 'notif_filter_unread' },
   { key: 'archived', labelKey: 'conv_filter_archived' },
 ];
@@ -65,9 +69,9 @@ const toMessageArray = (value) => {
   return [];
 };
 
-// External channels stay on the Unified Conversations inbox; AI chats stay on
-// the Voice Assistant page. Neither belongs in this internal team-messaging view.
-const HIDDEN_INBOX_PLATFORMS = ['whatsapp', 'facebook', 'instagram', 'email', 'sms'];
+// External social channels stay on the Unified Conversations inbox; AI chats stay on
+// the Voice Assistant page. SMS conversations remain supported in the conversations inbox.
+const HIDDEN_INBOX_PLATFORMS = ['whatsapp', 'facebook', 'instagram', 'email'];
 
 const normalizePlatform = (value) => {
   const lower = String(value || '').toLowerCase();
@@ -82,9 +86,12 @@ const normalizePlatform = (value) => {
 };
 
 // The server flags customer threads (any channel, incl. Telegram/LinkedIn/...); the platform
-// list is only a fallback for older payloads.
-const isExternalConversation = (conversation) =>
-  Boolean(conversation?.is_customer_conversation) || HIDDEN_INBOX_PLATFORMS.includes(normalizePlatform(conversation?.platform));
+// list is only a fallback for older payloads. SMS threads are exempt from being hidden.
+const isExternalConversation = (conversation) => {
+  const platform = normalizePlatform(conversation?.platform);
+  if (platform === 'sms') return false;
+  return Boolean(conversation?.is_customer_conversation) || HIDDEN_INBOX_PLATFORMS.includes(platform);
+};
 
 const getConversationName = (conversation, t) =>
   conversation?.contact_name ||
@@ -504,6 +511,12 @@ export default function Conversations() {
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [forwardMessage, setForwardMessage] = useState(null);
   const [forwardModalVisible, setForwardModalVisible] = useState(false);
+  const [newSmsModalVisible, setNewSmsModalVisible] = useState(false);
+  const [smsRecipientPhone, setSmsRecipientPhone] = useState('');
+  const [smsRecipientName, setSmsRecipientName] = useState('');
+  const [smsMessageBody, setSmsMessageBody] = useState('');
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsError, setSmsError] = useState('');
   const [typingState, setTypingState] = useState({ is_typing: false, actor_name: null, preview_text: null });
   const [audioSending, setAudioSending] = useState(false);
   const bottomRef = useRef(null);
@@ -519,6 +532,11 @@ export default function Conversations() {
   const conversations = useMemo(() => {
     if (activeFilter === 'archived') return archivedList;
     if (activeFilter === 'unread') return activeList.filter((item) => item.unread_count > 0);
+    if (activeFilter === 'sms') {
+      return activeList.filter(
+        (item) => normalizePlatform(item.platform) === 'sms' || item.platformBadge === 'sms'
+      );
+    }
     return activeList;
   }, [activeFilter, activeList, archivedList]);
 
@@ -750,7 +768,7 @@ export default function Conversations() {
     setReplyToMessage(null);
     if (!selectedId) return undefined;
     fetchMessages(selectedId);
-    smartflowApi.markConversationRead(selectedId).catch(() => {});
+    smartflowApi.markConversationRead?.(selectedId)?.catch?.(() => {});
     const markRead = (item) => (item.id === selectedId ? { ...item, unread_count: 0 } : item);
     setActiveList((previous) => previous.map(markRead));
     setArchivedList((previous) => previous.map(markRead));
@@ -779,7 +797,7 @@ export default function Conversations() {
   useEffect(() => {
     // Follow new messages only while the reader is already at the bottom; loading older
     // history or scrolling up must not be yanked back down.
-    if (stickToBottomRef.current) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (stickToBottomRef.current) bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' });
   }, [messages, typingState]);
 
   const handleThreadScroll = (event) => {
@@ -793,6 +811,9 @@ export default function Conversations() {
     const counts = Object.fromEntries(filterOptions.map((option) => [option.key, 0]));
     counts.all = activeList.length;
     counts.unread = activeList.filter((item) => item.unread_count > 0).length;
+    counts.sms = activeList.filter(
+      (item) => normalizePlatform(item.platform) === 'sms' || item.platformBadge === 'sms'
+    ).length;
     counts.archived = archivedList.length;
     return counts;
   }, [activeList, archivedList, filterOptions]);
@@ -928,6 +949,53 @@ export default function Conversations() {
     }
   };
 
+  const handleSendNewSms = async (event) => {
+    event?.preventDefault();
+    const phone = smsRecipientPhone.trim();
+    const message = smsMessageBody.trim();
+    const name = smsRecipientName.trim();
+
+    if (!phone) {
+      setSmsError('Please enter a recipient phone number.');
+      return;
+    }
+    if (!message) {
+      setSmsError('Please enter an SMS message to send.');
+      return;
+    }
+
+    setSmsSending(true);
+    setSmsError('');
+    try {
+      const convRes = await smartflowApi.createConversation({
+        title: name || phone,
+        platform: 'sms',
+        type: 'direct',
+      });
+      const convData = getApiData(convRes);
+      const newConvId = convData.id || convData._id;
+
+      await smartflowApi.sendMessage({
+        conversation_id: newConvId,
+        content: message,
+        platform: 'sms',
+      });
+
+      setNewSmsModalVisible(false);
+      setSmsRecipientPhone('');
+      setSmsRecipientName('');
+      setSmsMessageBody('');
+
+      await fetchConversationCollections();
+      setSelectedId(newConvId);
+      await fetchMessages(newConvId, true);
+    } catch (err) {
+      setSmsError(err?.response?.data?.message || err?.message || 'Failed to send SMS.');
+    } finally {
+      setSmsSending(false);
+    }
+  };
+
   const handleSendAudio = async () => {
     if (!audioBlob || !selectedId || !selectedConversation) return;
 
@@ -996,7 +1064,23 @@ export default function Conversations() {
   return (
     <div className="flex h-[calc(100vh-10rem)] overflow-hidden rounded-3xl border border-[#243041]/60 bg-[#0c101b] shadow-xl">
       <div className="flex w-80 shrink-0 flex-col border-r border-[#243041]/40 bg-slate-950/20">
-        <div className="space-y-2 border-b border-[#243041]/20 p-4">
+        <div className="space-y-3 border-b border-[#243041]/20 p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-black uppercase tracking-wider text-slate-300">Messages</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setNewSmsModalVisible(true);
+                setSmsError('');
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-[#9333ea] px-2.5 py-1 text-xs font-bold text-white shadow-md shadow-[#9333ea]/20 transition-all hover:bg-[#a855f7] cursor-pointer"
+              title="Compose New SMS"
+            >
+              <Plus size={13} />
+              <span>New SMS</span>
+            </button>
+          </div>
+
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
             <input
@@ -1346,6 +1430,107 @@ export default function Conversations() {
                 <div className="p-6 text-center text-xs text-slate-500">{t('conv_no_forward_targets')}</div>
               )}
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {newSmsModalVisible ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-[#243041] bg-[#0c101b] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#243041] p-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#9333ea]/20 text-[#a855f7]">
+                  <MessageSquareText size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">New Outbound SMS</h3>
+                  <p className="text-[11px] text-slate-400">Send an SMS to a new or existing contact</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewSmsModalVisible(false)}
+                className="cursor-pointer text-slate-500 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendNewSms} className="p-4 space-y-3">
+              {smsError ? (
+                <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-950/30 p-2.5 text-xs text-rose-300">
+                  <AlertTriangle size={14} className="shrink-0" />
+                  <span>{smsError}</span>
+                </div>
+              ) : null}
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-300">
+                  Recipient Phone Number <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={13} />
+                  <input
+                    type="tel"
+                    required
+                    value={smsRecipientPhone}
+                    onChange={(e) => setSmsRecipientPhone(e.target.value)}
+                    placeholder="+1 (555) 234-5678"
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 pl-8 pr-3 text-xs font-medium text-white placeholder-slate-600 focus:border-[#9333ea] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-300">
+                  Recipient Name <span className="text-slate-500 text-[10px]">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={smsRecipientName}
+                  onChange={(e) => setSmsRecipientName(e.target.value)}
+                  placeholder="e.g. Jane Doe"
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 px-3 text-xs font-medium text-white placeholder-slate-600 focus:border-[#9333ea] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-300">
+                    Message <span className="text-rose-400">*</span>
+                  </label>
+                  <span className="text-[10px] text-slate-500">
+                    {smsMessageBody.length} chars ({Math.ceil(smsMessageBody.length / 160) || 1} segment)
+                  </span>
+                </div>
+                <textarea
+                  required
+                  rows={4}
+                  value={smsMessageBody}
+                  onChange={(e) => setSmsMessageBody(e.target.value)}
+                  placeholder="Type your outbound SMS message here..."
+                  className="w-full resize-none rounded-xl border border-slate-800 bg-slate-950 p-2.5 text-xs font-medium text-white placeholder-slate-600 focus:border-[#9333ea] focus:outline-none"
+                />
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-2 pt-2 border-t border-[#243041]/40">
+                <button
+                  type="button"
+                  onClick={() => setNewSmsModalVisible(false)}
+                  className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={smsSending || !smsRecipientPhone.trim() || !smsMessageBody.trim()}
+                  className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#9333ea] px-4 py-1.5 text-xs font-bold text-white shadow-md shadow-[#9333ea]/20 transition-all hover:bg-[#a855f7] disabled:opacity-50"
+                >
+                  {smsSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                  <span>{smsSending ? 'Sending...' : 'Send SMS'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

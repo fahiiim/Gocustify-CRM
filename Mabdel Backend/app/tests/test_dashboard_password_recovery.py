@@ -107,3 +107,41 @@ def test_an_incorrect_otp_guess_is_counted_and_eventually_locked_out(mock_db, mo
 
     stored = asyncio.run(mock_db.otps.find_one({"email": "dash-bruteforce@example.com"}))
     assert stored["attempts"] >= settings.OTP_MAX_ATTEMPTS
+
+
+def test_consume_otp_increments_attempts_and_locks_out(mock_db, monkeypatch):
+    """T17 / FEAT-AUTH-04: consume_otp must increment attempts on failed attempts so
+    callers cannot bypass rate limits by brute-forcing consume_otp directly."""
+    from app.repositories.dashboard.dashboard_repository import DashboardRepository
+    from app.core.config import settings
+    from app.services import email_service as email_service_module
+
+    async def fake_send_otp_email(self, *, email, otp_code, purpose):
+        pass
+
+    monkeypatch.setattr(email_service_module.EmailService, "send_otp_email", fake_send_otp_email)
+
+    asyncio.run(_seed_user(mock_db, "consume-brute@example.com"))
+    service = DashboardService(mock_db)
+    asyncio.run(service.forgot_password("consume-brute@example.com"))
+
+    repo = DashboardRepository(mock_db)
+    initial = asyncio.run(mock_db.otps.find_one({"email": "consume-brute@example.com"}))
+    real_otp = initial["otp"]
+    assert initial["attempts"] == 0
+
+    # Failed consume attempt increments counter
+    assert asyncio.run(repo.consume_otp("consume-brute@example.com", "999999")) is False
+    after_one = asyncio.run(mock_db.otps.find_one({"email": "consume-brute@example.com"}))
+    assert after_one["attempts"] == 1
+
+    # Burn remaining attempts
+    for _ in range(settings.OTP_MAX_ATTEMPTS - 1):
+        assert asyncio.run(repo.consume_otp("consume-brute@example.com", "999999")) is False
+
+    # Now locked out: even the REAL otp cannot be consumed
+    assert asyncio.run(repo.consume_otp("consume-brute@example.com", real_otp)) is False
+    final_otp = asyncio.run(mock_db.otps.find_one({"email": "consume-brute@example.com"}))
+    assert final_otp["used"] is False
+    assert final_otp["attempts"] >= settings.OTP_MAX_ATTEMPTS
+

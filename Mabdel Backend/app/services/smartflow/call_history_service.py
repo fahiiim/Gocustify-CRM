@@ -122,6 +122,13 @@ class CallHistoryService(SmartFlowBase):
                 message="A phone number or a contact with a phone number is required to start a call.",
             )
 
+        # TCPA compliance check: enforce quiet hours guard (08:00 - 21:00 recipient local time)
+        from .tcpa_guard import assert_tcpa_compliant
+        assert_tcpa_compliant(
+            phone_number=phone_number,
+            bypass_quiet_hours=bool(payload.get("bypass_quiet_hours", False)),
+        )
+
         # Everyone on the team calls out from the business's one shared number, unless
         # an explicit override was passed (e.g. a BYO/custom scenario).
         from_number = payload.get("from_number") or await self._resolve_org_caller_id(user_id)

@@ -91,6 +91,10 @@ class AICallTestMessageRequest(BaseModel):
 class AICallTestMessageResponse(BaseModel):
     reply: str
     ended: bool
+    detected_intent: str | None = None
+    recognized_entity: str | None = None
+    backend_lookup: str | None = None
+    action_taken: str | None = None
 
 
 class CalendarProviderSettingsUpdateRequest(BaseModel):

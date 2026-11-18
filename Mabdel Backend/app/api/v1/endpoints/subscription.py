@@ -56,22 +56,30 @@ async def _provision_number_and_notify(uid: str, db: AsyncIOMotorDatabase) -> No
     if not phone_number:
         return
 
-    await SmartFlowService(db).create_notification(
-        uid,
-        "telnyx_number_assigned",
-        "Your business phone number is ready",
-        f"We've assigned {phone_number} to your business. It supports calls and SMS right away.",
-        action_url="/integrations",
-    )
+    try:
+        await SmartFlowService(db).create_notification(
+            uid,
+            "telnyx_number_assigned",
+            "Your business phone number is ready",
+            f"We've assigned {phone_number} to your business. It supports calls and SMS right away.",
+            action_url="/integrations",
+        )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to create in-app notification for phone assignment: %s", exc)
 
     recipient = user.get("original_email") or user.get("email")
     if recipient:
-        await EmailService().send(
-            email=recipient,
-            subject="Your GoCustify business phone number is ready",
-            text=f"Your business phone number is {phone_number}. It's active now for calls and SMS.",
-            html=f"<p>Your business phone number is <strong>{phone_number}</strong>. It's active now for calls and SMS.</p>",
-        )
+        try:
+            await EmailService().send(
+                email=recipient,
+                subject="Your GoCustify business phone number is ready",
+                text=f"Your business phone number is {phone_number}. It's active now for calls and SMS.",
+                html=f"<p>Your business phone number is <strong>{phone_number}</strong>. It's active now for calls and SMS.</p>",
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to send phone assignment email to %s: %s", recipient, exc)
 
 
 async def _get_subscription_status(user_doc: dict, db: AsyncIOMotorDatabase) -> dict:
@@ -249,3 +257,19 @@ async def activate_subscription(
         "message": "Subscription activated.",
         "data": {"status": "active"},
     }
+
+
+# ─── POST /subscription/upgrade-tier ─────────────────────────────────────────
+
+@router.post("/upgrade-tier")
+async def upgrade_tier(
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    from app.services.stripe_subscription_service import upgrade_subscription_tier
+    tier = payload.get("tier")
+    proration_behavior = payload.get("proration_behavior", "create_prorations")
+    res = await upgrade_subscription_tier(db, _uid(current_user), tier, proration_behavior)
+    return {"success": True, "message": f"Successfully updated subscription to {tier}.", "data": res}
+

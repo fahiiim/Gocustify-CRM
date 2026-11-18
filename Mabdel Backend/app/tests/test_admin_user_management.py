@@ -77,3 +77,53 @@ def test_a_platform_admin_can_still_manage_any_organizations_user(client, mock_d
     response = client.get(f"/api/v1/dashboard/admin/users/{target_id}", headers=admin_headers)
 
     assert response.status_code == 200
+
+
+def test_a_platform_admin_cannot_modify_or_block_a_super_admin(client, mock_db):
+    """Regression test for T06 / FEAT-RBAC-04: Subordinate Admins must not be
+    able to update profile, change email, or toggle status of a Super Admin."""
+    admin_headers, _ = _signup(client, mock_db, "subordinate-admin@example.com", "Sub Admin")
+    grant_role(mock_db, "subordinate-admin@example.com", "admin")
+
+    _, super_admin_id = _signup(client, mock_db, "supreme-admin@example.com", "Super Admin")
+    grant_role(mock_db, "supreme-admin@example.com", "super_admin")
+
+    # 1. Subordinate Admin attempts to edit Super Admin profile
+    patch_res = client.patch(
+        f"/api/v1/dashboard/admin/users/{super_admin_id}",
+        headers=admin_headers,
+        json={"email": "compromised@example.com"},
+    )
+    assert patch_res.status_code == 403
+    assert "Super Admin" in patch_res.json().get("message", "")
+
+    # 2. Subordinate Admin attempts to block Super Admin via status route
+    status_res = client.patch(
+        f"/api/v1/dashboard/admin/users/{super_admin_id}/status",
+        headers=admin_headers,
+        json={"status": "blocked"},
+    )
+    assert status_res.status_code == 403
+
+    # 3. Subordinate Admin attempts to block Super Admin via alias route
+    block_res = client.post(
+        f"/api/v1/dashboard/admin/users/{super_admin_id}/block",
+        headers=admin_headers,
+    )
+    assert block_res.status_code == 403
+
+
+def test_a_super_admin_can_manage_users(client, mock_db):
+    """Super Admin has full authority to manage and block users."""
+    super_headers, _ = _signup(client, mock_db, "boss-admin@example.com", "Boss")
+    grant_role(mock_db, "boss-admin@example.com", "super_admin")
+
+    _, target_id = _signup(client, mock_db, "sub-user@example.com", "Sub User")
+
+    status_res = client.patch(
+        f"/api/v1/dashboard/admin/users/{target_id}/status",
+        headers=super_headers,
+        json={"status": "blocked"},
+    )
+    assert status_res.status_code == 200
+    assert status_res.json()["data"] is True

@@ -219,25 +219,19 @@ class GoogleCalendarService:
                 deleted_count += await self._delete_local_google_event(user_id, google_event_id)
                 continue
 
-            local_doc = await self.db.calendar_events.find_one({"user_id": user_id, "google_event_id": google_event_id})
             mapped = await self._map_google_event_to_document(user_id, remote_event, provider_metadata)
-            if local_doc:
-                await self.db.calendar_events.update_one(
-                    {"_id": local_doc["_id"]},
-                    {"$set": {**mapped, "updated_at": utc_now()}},
-                )
-                updated_count += 1
-            else:
-                await self.db.calendar_events.insert_one(
-                    {
-                        "user_id": user_id,
-                        **mapped,
-                        "share_token": None,
-                        "created_at": utc_now(),
-                        "updated_at": utc_now(),
-                    }
-                )
+            from app.services.smartflow.calendar_sync_service import CalendarSyncService
+            sync_service = CalendarSyncService(self.db)
+            sync_res = await sync_service.deduplicate_and_upsert_remote_event(
+                user_id=user_id,
+                platform="google_business",
+                remote_event_id=google_event_id,
+                mapped_event_data=mapped,
+            )
+            if sync_res["action"] == "inserted":
                 imported_count += 1
+            elif sync_res["action"] in ("updated", "skipped_unchanged"):
+                updated_count += 1
 
         stale_docs = await self.db.calendar_events.find(
             {

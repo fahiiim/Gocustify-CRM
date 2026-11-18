@@ -17,6 +17,8 @@ class SocialIntegrationUpsertRequest(BaseModel):
 
 class SocialAutoReplyUpdateRequest(BaseModel):
     enabled: bool
+    platform: str | None = None
+
 
 
 class TelegramManualConnectRequest(BaseModel):

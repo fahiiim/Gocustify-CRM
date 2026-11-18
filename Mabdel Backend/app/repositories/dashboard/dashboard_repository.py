@@ -382,17 +382,30 @@ class DashboardRepository:
         for that purpose."""
         from app.core.config import settings
 
+        now = utc_now()
         result = await self.db.otps.update_one(
             {
                 "email": email,
                 "otp": otp,
                 "used": False,
-                "expire_at": {"$gt": utc_now()},
+                "expire_at": {"$gt": now},
                 "attempts": {"$lt": settings.OTP_MAX_ATTEMPTS},
             },
-            {"$set": {"used": True}},
+            {"$set": {"used": True, "updated_at": now}},
         )
-        return result.modified_count > 0
+        if result.modified_count > 0:
+            return True
+
+        # Failed attempt: atomically increment attempts on the active OTP record to prevent brute-forcing
+        await self.db.otps.update_one(
+            {
+                "email": email,
+                "used": False,
+                "expire_at": {"$gt": now},
+            },
+            {"$inc": {"attempts": 1}, "$set": {"updated_at": now}},
+        )
+        return False
 
     async def get_settings_content(self, content_type: str) -> str:
         doc = await self.db.settings.find_one({"type": content_type})

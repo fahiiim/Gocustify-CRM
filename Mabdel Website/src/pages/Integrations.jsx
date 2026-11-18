@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, ChevronLeft, HelpCircle, Inbox, Loader2, MessageSquareText } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronLeft, HelpCircle, Inbox, Loader2, MessageSquareText, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import {
@@ -411,6 +411,29 @@ function PlatformCard({ item, onConnect, onDisconnect }) {
   const iconColor = meta.badgeColor || '#fff';
   const Icon = meta.Icon;
 
+  const [autoReply, setAutoReply] = useState(Boolean(item.auto_reply_enabled));
+  const [togglingReply, setTogglingReply] = useState(false);
+
+  useEffect(() => {
+    setAutoReply(Boolean(item.auto_reply_enabled));
+  }, [item.auto_reply_enabled]);
+
+  async function handleToggleAutoReply(e) {
+    e.stopPropagation();
+    if (togglingReply) return;
+    const nextState = !autoReply;
+    setTogglingReply(true);
+    try {
+      await smartflowApi.setSocialAutoReply({ enabled: nextState, platform: item.platform });
+      setAutoReply(nextState);
+    } catch (err) {
+      console.error('Failed to update social auto-reply', err);
+      window.alert(err.response?.data?.message || 'Failed to update auto-reply setting.');
+    } finally {
+      setTogglingReply(false);
+    }
+  }
+
   async function run(action) {
     if (busy) return;
     setBusy(true);
@@ -428,25 +451,59 @@ function PlatformCard({ item, onConnect, onDisconnect }) {
 
   return (
     <div
-      className={`bg-[#111318] border border-[#1E2530] rounded-2xl px-3.5 py-3.5 flex flex-row items-center gap-3 text-start ${
+      className={`bg-[#111318] border border-[#1E2530] rounded-2xl px-3.5 py-3.5 flex flex-col gap-2.5 text-start ${
         isUnavailable ? 'opacity-50' : ''
       }`}
     >
-      <div
-        className="w-[52px] h-[52px] rounded-xl flex items-center justify-center shrink-0 border-[1.5px]"
-        style={{ backgroundColor: meta.bg, borderColor: '#333' }}
-      >
-        <Icon size={26} color={iconColor} aria-hidden="true" />
+      <div className="flex flex-row items-center gap-3">
+        <div
+          className="w-[52px] h-[52px] rounded-xl flex items-center justify-center shrink-0 border-[1.5px]"
+          style={{ backgroundColor: meta.bg, borderColor: '#333' }}
+        >
+          <Icon size={26} color={iconColor} aria-hidden="true" />
+        </div>
+
+        <div className="flex-1 flex flex-col justify-center min-w-0">
+          <h3 className="font-bold text-[#F0F6FF] text-[16px] truncate">{meta.label}</h3>
+          <p className="text-[13px] text-[#6B7A90] leading-[18px] line-clamp-2">{desc}</p>
+          {item.external_account_name ? (
+            <p className="text-[12px] text-[#9BA7BB] truncate mt-0.5">{item.external_account_name}</p>
+          ) : null}
+        </div>
+
+        {item.connected ? (
+          <button
+            type="button"
+            onClick={handleDisconnect}
+            disabled={busy}
+            aria-label={t('integ_aria_disconnect', { name: meta.label })}
+            className="flex items-center gap-1.5 bg-[#0D2318] border border-[#1a4a2e] px-3 py-2 rounded-full cursor-pointer hover:bg-emerald-950 transition-colors shrink-0 disabled:opacity-60"
+          >
+            {busy ? (
+              <Loader2 size={16} className="animate-spin text-[#4DCE63]" aria-hidden="true" />
+            ) : (
+              <CheckCircle2 size={16} className="text-[#4DCE63]" aria-hidden="true" />
+            )}
+            <span className="text-[#4DCE63] text-[13px] font-semibold">{t('integ_status_connected')}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => !isUnavailable && run(() => onConnect(item))}
+            disabled={isUnavailable || busy}
+            className={`px-4 py-2 rounded-full min-w-[80px] flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0 ${
+              isUnavailable ? 'bg-[#1E2530] text-[#03141E]' : 'bg-[#c084fc] text-[#03141E] hover:bg-[#7e22ce] disabled:opacity-60'
+            }`}
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
+            <span className="text-[14px] font-bold">{isUnavailable ? t('integ_status_soon') : t('integ_btn_connect')}</span>
+          </button>
+        )}
       </div>
 
-      <div className="flex-1 flex flex-col justify-center min-w-0">
-        <h3 className="font-bold text-[#F0F6FF] text-[16px] truncate">{meta.label}</h3>
-        <p className="text-[13px] text-[#6B7A90] leading-[18px] line-clamp-2">{desc}</p>
-        {item.external_account_name ? (
-          <p className="text-[12px] text-[#9BA7BB] truncate mt-1">{item.external_account_name}</p>
-        ) : null}
-        {item.connected && MESSAGING_PLATFORMS.includes(item.platform) ? (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+      {item.connected && MESSAGING_PLATFORMS.includes(item.platform) ? (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-[#1E2530] pt-2.5 mt-1 text-[12px]">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {item.connection_mode ? (
               <span className="rounded-full bg-[#1E2530] px-2 py-0.5 font-semibold text-[#C8D2E0]">
                 {item.connection_mode === 'official' ? t('integ_mode_official') : t('integ_mode_qr')}
@@ -462,37 +519,35 @@ function PlatformCard({ item, onConnect, onDisconnect }) {
               {t('integ_open_in_unified')}
             </Link>
           </div>
-        ) : null}
-      </div>
 
-      {item.connected ? (
-        <button
-          type="button"
-          onClick={handleDisconnect}
-          disabled={busy}
-          aria-label={t('integ_aria_disconnect', { name: meta.label })}
-          className="flex items-center gap-1.5 bg-[#0D2318] border border-[#1a4a2e] px-3 py-2 rounded-full cursor-pointer hover:bg-emerald-950 transition-colors shrink-0 disabled:opacity-60"
-        >
-          {busy ? (
-            <Loader2 size={16} className="animate-spin text-[#4DCE63]" aria-hidden="true" />
-          ) : (
-            <CheckCircle2 size={16} className="text-[#4DCE63]" aria-hidden="true" />
-          )}
-          <span className="text-[#4DCE63] text-[13px] font-semibold">{t('integ_status_connected')}</span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => !isUnavailable && run(() => onConnect(item))}
-          disabled={isUnavailable || busy}
-          className={`px-4 py-2 rounded-full min-w-[80px] flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0 ${
-            isUnavailable ? 'bg-[#1E2530] text-[#03141E]' : 'bg-[#c084fc] text-[#03141E] hover:bg-[#7e22ce] disabled:opacity-60'
-          }`}
-        >
-          {busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
-          <span className="text-[14px] font-bold">{isUnavailable ? t('integ_status_soon') : t('integ_btn_connect')}</span>
-        </button>
-      )}
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <span className="text-[12px] text-[#9BA7BB] flex items-center gap-1">
+              <Sparkles size={13} className="text-[#c084fc]" aria-hidden="true" />
+              AI Auto-Reply
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoReply}
+              aria-label={`Toggle AI auto-reply for ${meta.label}`}
+              disabled={togglingReply}
+              onClick={handleToggleAutoReply}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                autoReply ? 'bg-[#c084fc]' : 'bg-[#2A3441]'
+              } disabled:opacity-50`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  autoReply ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+            <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${autoReply ? 'text-[#4DCE63] bg-emerald-950/60' : 'text-[#6B7A90] bg-[#1E2530]'}`}>
+              {autoReply ? 'Active' : 'Off'}
+            </span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -545,13 +600,25 @@ export default function Integrations() {
       }
     }
 
+    let autoReplies = {};
+    try {
+      const autoRes = await smartflowApi.getSocialAutoReply?.();
+      autoReplies = autoRes?.data?.data?.platforms || {};
+    } catch {
+      // Non-blocking
+    }
+
     if (list.length === 0 && failed) {
       // Keep showing what we already had rather than wiping a working page.
       if (itemsRef.current.length === 0) setItems([]);
       setError(t('integ_err_load_failed'));
     } else {
-      itemsRef.current = list;
-      setItems(list);
+      const merged = list.map((item) => ({
+        ...item,
+        auto_reply_enabled: autoReplies[item.platform] ?? Boolean(item.auto_reply_enabled),
+      }));
+      itemsRef.current = merged;
+      setItems(merged);
     }
     loadedOnceRef.current = true;
     setLoading(false);

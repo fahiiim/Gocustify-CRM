@@ -191,13 +191,38 @@ class CallService:
             logger.warning("Telnyx hangup failed for %s: %s", call_control_id, exc)
             return False
 
-    async def transfer_call(self, call_control_id: str, *, to_number: str) -> bool:
+    async def transfer_call(self, call_control_id: str, *, to_number: str, audio_url: str | None = None) -> bool:
         client = self._client()
+        hold_audio = audio_url or getattr(settings, "HOLD_MUSIC_URL", "https://assets.gocustify.com/audio/hold-music.mp3")
         try:
-            client.calls.actions.transfer(call_control_id, to=to_number)
+            transfer_params = {"to": to_number}
+            if hold_audio:
+                transfer_params["audio_url"] = hold_audio
+            client.calls.actions.transfer(call_control_id, **transfer_params)
             return True
         except telnyx.TelnyxError as exc:
             logger.warning("Telnyx transfer failed for %s: %s", call_control_id, exc)
+            return False
+
+    async def play_hold_music(self, call_control_id: str, *, audio_url: str | None = None) -> bool:
+        """Plays hold music stream on an active call leg."""
+        client = self._client()
+        hold_audio = audio_url or getattr(settings, "HOLD_MUSIC_URL", "https://assets.gocustify.com/audio/hold-music.mp3")
+        try:
+            client.calls.actions.playback_start(call_control_id, audio_url=hold_audio)
+            return True
+        except telnyx.TelnyxError as exc:
+            logger.warning("Telnyx playback_start failed for %s: %s", call_control_id, exc)
+            return False
+
+    async def stop_hold_music(self, call_control_id: str) -> bool:
+        """Stops hold music stream playback on an active call leg."""
+        client = self._client()
+        try:
+            client.calls.actions.playback_stop(call_control_id)
+            return True
+        except telnyx.TelnyxError as exc:
+            logger.warning("Telnyx playback_stop failed for %s: %s", call_control_id, exc)
             return False
 
     async def ring_browser(

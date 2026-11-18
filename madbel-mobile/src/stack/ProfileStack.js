@@ -1,4 +1,5 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import useUserRole from "../hooks/useUserRole";
 import ProfileHomeScreen from "../screens/profile/ProfileHomeScreen";
 import ProfileEditScreenWrapper from "../formWrapper/ProfileEditScreenWrapper";
 import ProfileChangePasswordScreenWrapper from "../formWrapper/ProfileChangePasswordScreenWrapper";
@@ -20,6 +21,8 @@ import SingleChatScreen from "../screens/chat/SingleChatScreen";
 const Stack = createNativeStackNavigator();
 
 const HomeStack = () => {
+  const { canManageSubscriptions, canManageBilling } = useUserRole();
+
   return (
     <Stack.Navigator
       screenOptions={{ headerShown: false }}
@@ -64,7 +67,9 @@ const HomeStack = () => {
         component={ProfileVoiceHistoryScreen}
       />
 
-      <Stack.Screen name="ProfileEarnings" component={MyEarningsStack} />
+      {canManageBilling && (
+        <Stack.Screen name="ProfileEarnings" component={MyEarningsStack} />
+      )}
       <Stack.Screen
         name="ProfileHostedActivities"
         component={HostedActivitiesScreen}
@@ -73,10 +78,12 @@ const HomeStack = () => {
         name="ProfileHostedEvents"
         component={HostedEventsScreen}
       />
-      <Stack.Screen
-        name="ProfileSubscription"
-        component={ProfileSubscriptionScreen}
-      />
+      {canManageSubscriptions && (
+        <Stack.Screen
+          name="ProfileSubscription"
+          component={ProfileSubscriptionScreen}
+        />
+      )}
     </Stack.Navigator>
   );
 };

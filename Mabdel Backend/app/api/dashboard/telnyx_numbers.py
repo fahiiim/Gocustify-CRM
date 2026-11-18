@@ -162,6 +162,44 @@ async def assign_telnyx_number(
         },
     )
 
+    # Automated in-app and email notification to organization owner
+    owner = await db.users.find_one(
+        {"organization_id": target_organization_id, "role": {"$in": ["owner", "admin"]}}
+    )
+    if not owner:
+        from bson import ObjectId
+        target_oid = ObjectId(target_organization_id) if ObjectId.is_valid(target_organization_id) else target_organization_id
+        owner = await db.users.find_one({"_id": target_oid}) or await db.users.find_one({"organization_id": target_organization_id})
+
+    if owner:
+        owner_id = str(owner.get("_id") or owner.get("id") or "")
+        try:
+            from app.services.smartflow_service import SmartFlowService
+            await SmartFlowService(db).create_notification(
+                owner_id,
+                "telnyx_number_assigned",
+                "Your business phone number is ready",
+                f"We've assigned {phone_number} to your business. It supports calls and SMS right away.",
+                action_url="/integrations",
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to send in-app notification for manual number assignment: %s", exc)
+
+        recipient = owner.get("original_email") or owner.get("email")
+        if recipient:
+            try:
+                from app.services.email_service import EmailService
+                await EmailService().send(
+                    email=recipient,
+                    subject="Your GoCustify business phone number is ready",
+                    text=f"Your business phone number is {phone_number}. It's active now for calls and SMS.",
+                    html=f"<p>Your business phone number is <strong>{phone_number}</strong>. It's active now for calls and SMS.</p>",
+                )
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("Failed to send phone assignment email to %s: %s", recipient, exc)
+
     await RBACRepository(db).write_audit_log(
         {
             "actor_id": _actor_id(current_user),

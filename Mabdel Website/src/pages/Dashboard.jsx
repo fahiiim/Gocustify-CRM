@@ -18,6 +18,7 @@ import { formatCstDateTime } from '../utils/dateUtils';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNotificationStore } from '../store/useNotificationStore';
 import { useLanguage } from '../context/LanguageContext';
+import FeatureHubLaunchpad from '../components/FeatureHubLaunchpad';
 
 const HOME_DOC_ITEM_DEFS = [
   { id: 'agreement', key: 'dash_doc_agreement', icon: FileText, action: { path: '/documents', state: { tab: 'agreements' } } },
@@ -762,6 +763,9 @@ export default function Dashboard() {
         minutesSaved={minutesSavedCount}
         t={t}
       />
+
+      {/* Organized Platform Feature Directory & Quick Access */}
+      <FeatureHubLaunchpad />
 
       <UnifiedConversationsCard
         totalChats={totalChats}

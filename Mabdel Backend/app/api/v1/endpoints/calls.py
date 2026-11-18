@@ -240,6 +240,8 @@ async def handle_telnyx_call_webhook(
         elif payload.direction == "outgoing":
             await _handle_outgoing_call_initiated(call_id, payload, service)
     elif event.event_type == "call.hangup":
+        from app.services.smartflow.ivr_engine import ivr_engine
+        ivr_engine.clear_buffer(call_id)
         if call_id in active_sessions and active_sessions[call_id].stream_sid is None:
             # Prewarmed at answer time but the media stream never opened.
             active_sessions.pop(call_id, None)
@@ -275,23 +277,16 @@ async def handle_telnyx_call_webhook(
 
 
 def _handle_keypad_digit(call_id: str, digit: str | None) -> None:
-    """Applies a keypad language choice to the live AI session.
-
-    ``active_sessions`` is held in this module by the WebSocket handler, and the
-    single uvicorn worker means the webhook reaches the very same object. A digit for
-    a call with no live AI session (a human-answered call, or one that already hung
-    up) is simply ignored — as is a digit that isn't on the configured menu, so a
-    stray keypress never switches the caller to a language nobody offered.
-    """
+    """Applies a keypad language choice to the live AI session, or buffers it if received early."""
     if not digit:
         return
+    from app.services.smartflow.ivr_engine import ivr_engine
     agent = active_sessions.get(call_id)
     if not agent:
+        ivr_engine.buffer_dtmf(call_id, digit)
         return
-    if not agent.set_language_from_digit(digit):
-        logger.info("Call %s: keypad digit %s is not on the language menu, ignoring", call_id, digit)
-        return
-    asyncio.create_task(agent.acknowledge_language_switch())
+    if not ivr_engine.process_digit(call_id, digit, agent):
+        logger.info("Call %s: keypad digit %s was not handled by active agent", call_id, digit)
 
 
 async def _handle_incoming_call(
@@ -900,6 +895,9 @@ async def call_stream(websocket: WebSocket, call_id: str) -> None:
         agent.caller_phone = other_party_number(call_log)
     agent.session_started_at = utc_now()
     active_sessions[call_id] = agent
+    from app.services.smartflow.ivr_engine import ivr_engine
+    for _b_digit in ivr_engine.get_buffered_digits(call_id):
+        ivr_engine.process_digit(call_id, _b_digit, agent)
 
     greeting_task = None
     keepalive_task = None

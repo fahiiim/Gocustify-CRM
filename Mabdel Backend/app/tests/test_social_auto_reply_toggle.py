@@ -29,3 +29,31 @@ def test_owner_can_disable_social_auto_reply(client, mock_db):
     assert response.status_code == 200
     org = asyncio.run(mock_db.organizations.find_one({"organization_id": organization_id}))
     assert org["social_auto_reply_enabled"] is False
+
+
+def test_owner_can_get_and_set_per_platform_social_auto_reply(client, mock_db):
+    headers, organization_id = _owner_with_org(client, mock_db, "auto-reply-platform@example.com")
+
+    # Initially false
+    get_res = client.get("/api/v1/smartflow/integrations/social-auto-reply", headers=headers)
+    assert get_res.status_code == 200
+    assert get_res.json()["data"]["enabled"] is False
+
+    # Enable for facebook_messenger specifically
+    patch_res = client.patch(
+        "/api/v1/smartflow/integrations/social-auto-reply",
+        headers=headers,
+        json={"enabled": True, "platform": "facebook_messenger"},
+    )
+    assert patch_res.status_code == 200
+    assert patch_res.json()["data"]["enabled"] is True
+    assert patch_res.json()["data"]["platform"] == "facebook_messenger"
+
+    # Verify per-platform get
+    get_platform_res = client.get(
+        "/api/v1/smartflow/integrations/social-auto-reply?platform=facebook_messenger",
+        headers=headers,
+    )
+    assert get_platform_res.status_code == 200
+    assert get_platform_res.json()["data"]["enabled"] is True
+

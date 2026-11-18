@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Response
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.dependencies import get_mongo_database, require_role, require_permission
@@ -323,11 +323,20 @@ async def get_trx_details(
 async def download_invoice(
     trx_id: str,
     current_user: dict = Depends(require_permission("earnings", "export")),
-):
+    service: DashboardService = Depends(get_dashboard_service),
+) -> Response:
     """
     Download the PDF invoice for a transaction.
     """
-    return BaseResponse(data=None, message="PDF Generation logic will be integrated with your invoice service")
+    trx = await service.get_transaction_details(trx_id)
+    from app.services.invoice_generator import generate_transaction_invoice_pdf
+    pdf_bytes = generate_transaction_invoice_pdf(trx)
+    filename = f"invoice_{trx_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/reports", response_model=BaseResponse[PaginatedResponse[UserReportListItem]])
@@ -400,6 +409,38 @@ async def create_subscription_plan(
     """
     plan_id = await service.create_subscription_plan(plan)
     return BaseResponse(data=plan_id, message="Subscription plan created successfully")
+
+
+@router.delete("/organizations/{organization_id}", response_model=BaseResponse[dict])
+async def delete_organization_cascading(
+    organization_id: str,
+    current_user: dict = Depends(require_role(["super_admin", "admin"])),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    """
+    T18 / FEAT-ADMIN-04: Hard delete an organization with cascading cleanup
+    of Telnyx DIDs, S3/local assets, documents, messages, contacts, and team members.
+    """
+    from app.services.tenant_cleanup_service import cleanup_tenant_cascading
+
+    result = await cleanup_tenant_cascading(db, organization_id=organization_id)
+    return BaseResponse(data=result, message="Organization and associated assets deleted.")
+
+
+@router.delete("/owners/{owner_id}", response_model=BaseResponse[dict])
+async def delete_owner_cascading(
+    owner_id: str,
+    current_user: dict = Depends(require_role(["super_admin", "admin"])),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    """
+    T18 / FEAT-ADMIN-04: Hard delete an owner account with cascading cleanup.
+    """
+    from app.services.tenant_cleanup_service import cleanup_tenant_cascading
+
+    result = await cleanup_tenant_cascading(db, owner_id=owner_id)
+    return BaseResponse(data=result, message="Owner and associated tenant assets deleted.")
+
 
 
 @router.get("/ai/stats", response_model=BaseResponse[AIStats])

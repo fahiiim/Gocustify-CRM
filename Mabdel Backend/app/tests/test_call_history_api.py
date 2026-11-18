@@ -160,3 +160,45 @@ def test_call_history_summary_route_is_not_shadowed_by_call_id_route(client, moc
     response = client.get("/api/v1/smartflow/calls/summary", headers=headers)
     assert response.status_code == 200
     assert response.json()["data"]["total_calls"] == 0
+
+
+def test_call_contact_resolves_known_caller_by_phone_number_without_contact_id(client, mock_db) -> None:
+    """Regression test for 3.4 / T03 / FEAT-TEL-05: When contact_id is missing
+    from call metadata, reverse lookup by phone number must resolve the known
+    contact name, profile details, and initials."""
+    headers = _auth_headers(client, mock_db, email="caller-id-resolution@example.com")
+    contact = _create_contact(
+        client,
+        headers,
+        first_name="Sarah",
+        last_name="Connor",
+        phone="+1 (555) 987-6543",
+        company="Cyberdyne Defense",
+    )
+
+    # Inbound call arrives with only caller phone number, NO contact_id
+    call_response = client.post(
+        "/api/v1/smartflow/calls",
+        headers=headers,
+        json={
+            "phone_number": "+15559876543",
+            "from_number": "+15559876543",
+            "call_type": "incoming",
+            "duration": 180,
+            "transcript": "Hello, this is Sarah Connor calling about the defense contract.",
+        },
+    )
+    assert call_response.status_code == 201
+    call_data = call_response.json()["data"]
+    call_id = call_data["id"]
+
+    # Verify call detail automatically resolves contact and name from phone number
+    detail_res = client.get(f"/api/v1/smartflow/calls/{call_id}", headers=headers)
+    assert detail_res.status_code == 200
+    detail = detail_res.json()["data"]
+
+    assert detail["contact_name"] == "Sarah Connor"
+    assert detail["contact"] is not None
+    assert detail["contact"]["name"] == "Sarah Connor"
+    assert detail["contact"]["company"] == "Cyberdyne Defense"
+    assert detail["initials"] == "SC"

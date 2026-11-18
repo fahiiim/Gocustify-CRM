@@ -254,6 +254,46 @@ def test_assign_endpoint_resolves_real_number_for_an_orphaned_number(client, moc
     assert org["telnyx_setup_status"] == "active"
 
 
+def test_assign_endpoint_dispatches_notification_and_email_to_owner(client, mock_db, monkeypatch):
+    """Regression test for 1.3 / T02: Admin manual assignment must dispatch
+    in-app notification and email to tenant owner."""
+    headers = _admin_headers(client, mock_db, email="telnyx-notifier-admin@example.com")
+    asyncio.run(mock_db.organizations.insert_one({"organization_id": "org_with_owner"}))
+    asyncio.run(
+        mock_db.users.insert_one(
+            {"_id": "user_owner_1", "organization_id": "org_with_owner", "role": "owner", "email": "owner_notify@example.com"}
+        )
+    )
+    _install_fake_telnyx(monkeypatch, numbers=[FakeNumber("+15554445555", "num_notify")])
+
+    sent_emails = []
+
+    async def fake_send(self, **kwargs):
+        sent_emails.append(kwargs)
+
+    from app.services.email_service import EmailService
+    monkeypatch.setattr(EmailService, "send", fake_send)
+
+    response = client.patch(
+        "/api/v1/dashboard/admin/telnyx-numbers/num_notify/assign",
+        json={"organization_id": "org_with_owner"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+    # 1. Verify in-app notification document was inserted
+    notif = asyncio.run(mock_db.notifications.find_one({"user_id": "user_owner_1"}))
+    assert notif is not None
+    assert notif["type"] == "telnyx_number_assigned"
+    assert "+15554445555" in notif["body"]
+
+    # 2. Verify email dispatch
+    assert len(sent_emails) == 1
+    assert sent_emails[0]["email"] == "owner_notify@example.com"
+    assert "+15554445555" in sent_emails[0]["text"]
+
+
 def test_release_endpoint_requires_admin_role(client, mock_db):
     headers = _admin_headers(client, mock_db, email="telnyx-release-not-admin@example.com", role="owner")
     response = client.delete("/api/v1/dashboard/admin/telnyx-numbers/num_release", headers=headers)

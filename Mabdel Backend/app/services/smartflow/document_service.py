@@ -9,7 +9,8 @@ from ._base import SmartFlowBase
 
 class DocumentService(SmartFlowBase):
     async def list_documents(self, user_id: str, page: int, page_size: int, search: str | None, doc_type: str | None) -> dict:
-        filters = {"user_id": user_id}
+        team_ids = await self._resolve_team_user_ids(user_id)
+        filters = {"user_id": {"$in": team_ids}}
         if search:
             filters["name"] = {"$regex": search, "$options": "i"}
         if doc_type:
@@ -39,7 +40,7 @@ class DocumentService(SmartFlowBase):
         return self._with_preview_url(self._to_public(document))
 
     async def update_document(self, user_id: str, document_id: str, updates: dict) -> dict:
-        document = await self._get_owned_document(self.db.documents, user_id, document_id, "DOCUMENT_NOT_FOUND")
+        document = await self._get_team_document(self.db.documents, user_id, document_id, "DOCUMENT_NOT_FOUND")
         clean_updates = {key: value for key, value in updates.items() if value is not None}
         clean_updates["updated_at"] = utc_now()
         updated = await self.db.documents.find_one_and_update(
@@ -59,7 +60,7 @@ class DocumentService(SmartFlowBase):
         return self._with_preview_url(self._to_public(updated))
 
     async def delete_document(self, user_id: str, document_id: str) -> None:
-        document = await self._get_owned_document(self.db.documents, user_id, document_id, "DOCUMENT_NOT_FOUND")
+        document = await self._get_team_document(self.db.documents, user_id, document_id, "DOCUMENT_NOT_FOUND")
         await self.db.documents.delete_one({"_id": document["_id"]})
         await self.log_ai_command(
             user_id=user_id,

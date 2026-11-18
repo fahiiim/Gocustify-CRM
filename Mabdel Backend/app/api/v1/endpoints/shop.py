@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, Request
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from starlette.datastructures import UploadFile
 
-from app.dependencies import get_mongo_database, require_role
+from app.core.exceptions import AppException
+from app.dependencies import get_current_user, get_mongo_database, require_role
 from app.services.media_storage_service import MediaStorageService
 from app.utils.helpers import utc_now
 
@@ -263,3 +264,161 @@ async def get_shop_product(
 ):
     item = await db.shop_products.find_one({"_id": _object_id_or_raw(product_id)})
     return {"success": bool(item), "data": _serialize_doc(item) if item else None}
+
+
+# ─── CART & CHECKOUT ENDPOINTS (T26 / FEAT-CRM-04) ──────────────────────────
+
+@router.get("/cart")
+async def get_cart(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = _current_user_id(current_user)
+    cart = await db.shop_carts.find_one({"user_id": user_id})
+    if not cart:
+        return {"success": True, "data": {"items": [], "subtotal": 0.0, "total": 0.0}}
+    return {"success": True, "data": _serialize_doc(cart)}
+
+
+@router.post("/cart")
+async def update_cart_item(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = _current_user_id(current_user)
+    payload = await _request_payload(request)
+    product_id = payload.get("productId") or payload.get("product_id")
+    quantity = int(payload.get("quantity", 1))
+
+    if not product_id:
+        raise AppException(status_code=400, code="INVALID_PRODUCT", message="productId is required.")
+
+    product = await db.shop_products.find_one({"_id": _object_id_or_raw(product_id)})
+    if not product or not product.get("isActive", True):
+        raise AppException(status_code=404, code="PRODUCT_NOT_FOUND", message="Product is unavailable.")
+
+    cart = await db.shop_carts.find_one({"user_id": user_id}) or {"user_id": user_id, "items": []}
+    items = cart.get("items", [])
+
+    existing_item = next((item for item in items if str(item.get("productId")) == str(product_id)), None)
+    if quantity <= 0:
+        items = [item for item in items if str(item.get("productId")) != str(product_id)]
+    elif existing_item:
+        existing_item["quantity"] = quantity
+        existing_item["price"] = float(product.get("price", 0.0))
+        existing_item["name"] = product.get("name", "")
+    else:
+        items.append({
+            "productId": str(product_id),
+            "name": product.get("name", ""),
+            "price": float(product.get("price", 0.0)),
+            "quantity": quantity,
+            "imageUrl": product.get("imageUrl"),
+        })
+
+    subtotal = sum(item["price"] * item["quantity"] for item in items)
+    cart["items"] = items
+    cart["subtotal"] = round(subtotal, 2)
+    cart["total"] = round(subtotal, 2)
+    cart["updated_at"] = utc_now()
+
+    await db.shop_carts.update_one(
+        {"user_id": user_id},
+        {"$set": cart, "$setOnInsert": {"created_at": utc_now()}},
+        upsert=True,
+    )
+    return {"success": True, "data": _serialize_doc(cart), "message": "Cart updated"}
+
+
+@router.delete("/cart/{product_id}")
+async def remove_cart_item(
+    product_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = _current_user_id(current_user)
+    cart = await db.shop_carts.find_one({"user_id": user_id})
+    if cart:
+        items = [item for item in cart.get("items", []) if str(item.get("productId")) != str(product_id)]
+        subtotal = sum(item["price"] * item["quantity"] for item in items)
+        await db.shop_carts.update_one(
+            {"user_id": user_id},
+            {"$set": {"items": items, "subtotal": round(subtotal, 2), "total": round(subtotal, 2), "updated_at": utc_now()}},
+        )
+    return {"success": True, "message": "Item removed from cart"}
+
+
+@router.delete("/cart")
+async def clear_cart(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = _current_user_id(current_user)
+    await db.shop_carts.delete_one({"user_id": user_id})
+    return {"success": True, "message": "Cart cleared"}
+
+
+@router.post("/checkout")
+async def checkout(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = _current_user_id(current_user)
+    payload = await _request_payload(request)
+    order_items = payload.get("items")
+
+    if not order_items:
+        cart = await db.shop_carts.find_one({"user_id": user_id})
+        order_items = (cart or {}).get("items", [])
+
+    if not order_items:
+        raise AppException(status_code=400, code="EMPTY_CART", message="No items in cart to checkout.")
+
+    validated_items = []
+    subtotal = 0.0
+
+    for item in order_items:
+        p_id = item.get("productId") or item.get("product_id")
+        qty = int(item.get("quantity", 1))
+        product = await db.shop_products.find_one({"_id": _object_id_or_raw(p_id)})
+        if not product or not product.get("isActive", True):
+            raise AppException(status_code=400, code="INVALID_PRODUCT", message=f"Product {p_id} is unavailable.")
+
+        unit_price = float(product.get("price", 0.0))
+        line_total = round(unit_price * qty, 2)
+        subtotal += line_total
+        validated_items.append({
+            "productId": str(p_id),
+            "name": product.get("name"),
+            "price": unit_price,
+            "quantity": qty,
+            "lineTotal": line_total,
+        })
+
+    order_doc = {
+        "user_id": user_id,
+        "items": validated_items,
+        "subtotal": round(subtotal, 2),
+        "tax": 0.0,
+        "total": round(subtotal, 2),
+        "status": "confirmed",
+        "shipping_address": payload.get("shippingAddress") or payload.get("shipping_address"),
+        "payment_method": payload.get("paymentMethod", "card"),
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+    }
+    res = await db.shop_orders.insert_one(order_doc)
+    order_id = str(res.inserted_id)
+    order_doc["id"] = order_id
+    order_doc["_id"] = order_id
+
+    # Clear user's cart upon checkout
+    await db.shop_carts.delete_one({"user_id": user_id})
+
+    return {
+        "success": True,
+        "data": _serialize_doc(order_doc),
+        "message": "Order placed successfully",
+    }

@@ -64,6 +64,25 @@ function setAudioVolume(volume) {
   });
 }
 
+export function restartCallIce(call) {
+  if (!call) return false;
+  try {
+    if (typeof call.restartIce === 'function') {
+      call.restartIce();
+      return true;
+    }
+    const pc = call.peer?.instance || call.peerConnection || call.rtcPeerConnection;
+    if (pc && typeof pc.restartIce === 'function') {
+      pc.restartIce();
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('[TelnyxVoice] restartCallIce failed:', err);
+    return false;
+  }
+}
+
 export function TelnyxVoiceProvider({ children }) {
   const { isAuthenticated, user } = useAuthStore();
   const clientRef = useRef(null);
@@ -244,6 +263,21 @@ export function TelnyxVoiceProvider({ children }) {
         durationSecondsRef.current = 0;
         setDurationSeconds(0);
         emitCallSync({ type: 'call_connected', callSid: callId });
+
+        // Attach ICE connection state monitor for automatic recovery
+        const pc = call.peer?.instance || call.peerConnection || call.rtcPeerConnection;
+        if (pc && typeof pc.addEventListener === 'function') {
+          const onIceChange = () => {
+            const iceState = pc.iceConnectionState;
+            console.log('[TelnyxVoice] ICE state changed:', iceState);
+            if (iceState === 'disconnected' || iceState === 'failed') {
+              console.warn('[TelnyxVoice] ICE connection disrupted, triggering restartIce()...');
+              restartCallIce(call);
+            }
+          };
+          pc.addEventListener('iceconnectionstatechange', onIceChange);
+        }
+
         // Explicitly play remote audio to bypass browser autoplay restrictions
         if (remoteAudioRef.current) {
           remoteAudioRef.current.volume = 1;
@@ -557,6 +591,39 @@ export function TelnyxVoiceProvider({ children }) {
     setAudioVolume(nextState ? 1 : 0);
   }, [isSpeakerOn]);
 
+  const triggerIceRestart = useCallback(() => {
+    if (currentCallRef.current) {
+      return restartCallIce(currentCallRef.current);
+    }
+    return false;
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('[TelnyxVoice] Network online event received');
+      if (currentCallRef.current) {
+        console.log('[TelnyxVoice] Network recovered during active call, executing restartIce...');
+        restartCallIce(currentCallRef.current);
+      } else if (isAuthenticated && status === 'offline') {
+        console.log('[TelnyxVoice] Re-initiating voice client after network restored...');
+        initClient();
+      }
+    };
+
+    const handleOffline = () => {
+      console.warn('[TelnyxVoice] Network offline event received');
+      setCallStatusText((prev) => (currentCallRef.current ? 'Reconnecting (Network Offline)...' : prev));
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [isAuthenticated, status, initClient]);
+
   const refreshToken = useCallback(() => initClient(), [initClient]);
 
   const value = useMemo(
@@ -583,6 +650,7 @@ export function TelnyxVoiceProvider({ children }) {
       toggleMute,
       toggleSpeaker,
       refreshToken,
+      restartIce: triggerIceRestart,
     }),
     [
       status,
@@ -604,6 +672,7 @@ export function TelnyxVoiceProvider({ children }) {
       toggleMute,
       toggleSpeaker,
       refreshToken,
+      triggerIceRestart,
     ]
   );
 

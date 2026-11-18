@@ -42,10 +42,53 @@ class CallMixin:
     async def _call_contact(self, call: dict) -> dict | None:
         contact_id = call.get("contact_id")
         user_id = call.get("user_id")
-        if contact_id and user_id and ObjectId.is_valid(contact_id):
-            contact = await self.db.contacts.find_one({"_id": ObjectId(contact_id), "user_id": user_id})
+
+        # 1. Lookup by contact_id if present
+        if contact_id and ObjectId.is_valid(contact_id):
+            query = {"_id": ObjectId(contact_id)}
+            if user_id:
+                query["user_id"] = user_id
+            contact = await self.db.contacts.find_one(query)
+            if not contact and user_id:
+                contact = await self.db.contacts.find_one({"_id": ObjectId(contact_id)})
             if contact:
                 return self._serialize_contact(contact)
+
+        # 2. Reverse phone lookup against contacts collection when contact_id is missing or unresolved
+        phone = (
+            call.get("phone_number")
+            or call.get("from_number")
+            or call.get("caller_number")
+            or call.get("to_number")
+        )
+        if phone:
+            raw = str(phone).strip()
+            digits = "".join(c for c in raw if c.isdigit())
+            variants = {raw}
+            if raw.startswith("+"):
+                variants.add(raw[1:])
+            else:
+                variants.add(f"+{raw}")
+            if digits:
+                variants.add(digits)
+                if len(digits) == 10:
+                    variants.add(f"+1{digits}")
+                    variants.add(f"1{digits}")
+                elif len(digits) == 11 and digits.startswith("1"):
+                    variants.add(digits[1:])
+                    variants.add(f"+{digits}")
+
+            phone_filter = {"phone": {"$in": list(variants)}}
+            if user_id:
+                contact = await self.db.contacts.find_one(
+                    {"user_id": user_id, **phone_filter}
+                ) or await self.db.contacts.find_one(phone_filter)
+            else:
+                contact = await self.db.contacts.find_one(phone_filter)
+
+            if contact:
+                return self._serialize_contact(contact)
+
         return None
 
     async def _call_repeat_count(self, call: dict) -> int:

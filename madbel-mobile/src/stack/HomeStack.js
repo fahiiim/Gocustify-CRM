@@ -1,4 +1,5 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import useUserRole from "../hooks/useUserRole";
 import HomeScreen from "../screens/home/HomeScreen";
 import CreateActivityScreenWrapper from "../formWrapper/CreateActivityScreenWrapper";
 
@@ -31,6 +32,8 @@ import GroupSettingScreen from "../screens/community/GroupSettingScreen";
 const Stack = createNativeStackNavigator();
 
 const HomeStack = () => {
+  const { canManageInvoices, canManageAgreements, canManageLeases, canManageIntegrations } = useUserRole();
+
   return (
     <Stack.Navigator
       screenOptions={{ headerShown: false }}
@@ -40,16 +43,32 @@ const HomeStack = () => {
 
       <Stack.Screen name="BulkEmailRecipients" component={BulkEmailRecipientsScreen} />
       <Stack.Screen name="BulkMessaging" component={BulkMessagingScreen} />
-      <Stack.Screen name="InvoiceList" component={InvoiceListScreen} />
-      <Stack.Screen name="AgreementList" component={AgreementListScreen} />
-      <Stack.Screen name="AgreementCreate" component={AgreementCreateScreen} />
-      <Stack.Screen name="AgreementPreview" component={AgreementPreviewScreen} />
-      <Stack.Screen name="LeaseList" component={LeaseListScreen} />
-      <Stack.Screen name="NewLease" component={NewLeaseScreen} />
-      <Stack.Screen name="LeasePreview" component={LeasePreviewScreen} />
-      <Stack.Screen name="CreateInvoice" component={CreateInvoiceScreen} />
-      <Stack.Screen name="InvoiceDetails" component={InvoiceDetailsScreen} />
-      <Stack.Screen name="InvoiceView" component={InvoiceViewScreen} />
+
+      {canManageInvoices && (
+        <>
+          <Stack.Screen name="InvoiceList" component={InvoiceListScreen} />
+          <Stack.Screen name="CreateInvoice" component={CreateInvoiceScreen} />
+          <Stack.Screen name="InvoiceDetails" component={InvoiceDetailsScreen} />
+          <Stack.Screen name="InvoiceView" component={InvoiceViewScreen} />
+        </>
+      )}
+
+      {canManageAgreements && (
+        <>
+          <Stack.Screen name="AgreementList" component={AgreementListScreen} />
+          <Stack.Screen name="AgreementCreate" component={AgreementCreateScreen} />
+          <Stack.Screen name="AgreementPreview" component={AgreementPreviewScreen} />
+        </>
+      )}
+
+      {canManageLeases && (
+        <>
+          <Stack.Screen name="LeaseList" component={LeaseListScreen} />
+          <Stack.Screen name="NewLease" component={NewLeaseScreen} />
+          <Stack.Screen name="LeasePreview" component={LeasePreviewScreen} />
+        </>
+      )}
+
       <Stack.Screen name="Contacts" component={ContactsScreen} />
       <Stack.Screen name="AddContact" component={AddContactScreen} />
       <Stack.Screen name="ScheduleMeeting" component={ScheduleMeetingScreen} />
@@ -60,10 +79,12 @@ const HomeStack = () => {
         }
       />
       <Stack.Screen name="MeetingDetails" component={MeetingDetailsScreen} />
-      <Stack.Screen
-        name="SocialIntegrations"
-        component={SocialIntegrationsScreen}
-      />
+      {canManageIntegrations && (
+        <Stack.Screen
+          name="SocialIntegrations"
+          component={SocialIntegrationsScreen}
+        />
+      )}
       <Stack.Screen name="GoogleReviews" component={GoogleReviewsScreen} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} />
       <Stack.Screen name="CallHistory" component={CallHistoryScreen} />
@@ -72,8 +93,6 @@ const HomeStack = () => {
       <Stack.Screen name="SingleChat" component={SingleChatScreen} />
       <Stack.Screen name="GroupChat" component={GroupChatScreen} />
       <Stack.Screen name="GroupSetting" component={GroupSettingScreen} />
-
-
     </Stack.Navigator>
   );
 };

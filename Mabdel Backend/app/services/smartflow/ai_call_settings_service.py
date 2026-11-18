@@ -139,6 +139,31 @@ class AICallSettingsService(SmartFlowBase):
         "emergency_response_mode": "take_message",
         "emergency_alert_phone": None,
         "outbound_call_purposes": DEFAULT_OUTBOUND_CALL_PURPOSES,
+        "custom_phrases": ["Our office", "Your next visit", "Our team"],
+        "payments_config": {
+            "accept_by_phone": True,
+            "send_payment_link": True,
+            "confirm_payment_received": True,
+        },
+        "recording_config": {
+            "record_calls": True,
+            "generate_transcripts": True,
+            "retention_days": 365,
+            "redact_sensitive_data": True,
+        },
+        "outbound_consent_config": {
+            "outbound_calls_enabled": True,
+            "require_consent": True,
+            "use_consent_script": True,
+            "honor_dnc": True,
+        },
+        "crm_lead_config": {
+            "create_new_lead_unknown": True,
+            "update_existing_contacts": True,
+            "tag_source_receptionist": True,
+            "avoid_duplicates": True,
+        },
+        "industry_conditional_data": {},
     }
 
     async def get_settings(self, user_id: str) -> dict:

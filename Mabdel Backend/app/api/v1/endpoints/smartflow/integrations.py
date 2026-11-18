@@ -4,12 +4,15 @@ import hashlib
 import hmac
 import json
 
-from fastapi import Depends, Header, Query, Request, status
+from fastapi import Body, Depends, Header, Query, Request, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import settings
 from app.core.exceptions import AppException
-from app.dependencies import require_permission, require_plan_feature
+from app.dependencies import get_current_user, get_mongo_database, require_permission, require_plan_feature
+from app.utils.helpers import utc_now
 from app.schemas.smartflow import (
     SocialAutoReplyUpdateRequest,
     SocialIntegrationUpsertRequest,
@@ -80,6 +83,16 @@ async def connect_integration(
     return success_response(data=data, message="Integration connected successfully.")
 
 
+@router.get("/integrations/social-auto-reply")
+async def get_social_auto_reply(
+    platform: str | None = Query(default=None),
+    current_user: dict = Depends(require_permission("integrations", "view")),
+    service: SmartFlowService = Depends(get_smartflow_service),
+) -> dict:
+    data = await service.get_social_auto_reply_enabled(str(current_user["_id"]), platform=platform)
+    return success_response(data=data, message="Social auto-reply setting fetched.")
+
+
 @router.patch("/integrations/social-auto-reply")
 async def set_social_auto_reply(
     payload: SocialAutoReplyUpdateRequest,
@@ -91,7 +104,7 @@ async def set_social_auto_reply(
     messages (pricing/hours/FAQ, answered only from the business's own
     configured info) - off by default so a business is never surprised by
     GoCustify messaging its customers on its behalf."""
-    data = await service.set_social_auto_reply_enabled(str(current_user["_id"]), payload.enabled)
+    data = await service.set_social_auto_reply_enabled(str(current_user["_id"]), payload.enabled, platform=payload.platform)
     return success_response(data=data, message="Social auto-reply setting updated.")
 
 
@@ -353,3 +366,162 @@ async def receive_whatsapp_contacts(
     await service.validate_platform_webhook_secret(resolved_user_id, "whatsapp", x_webhook_secret)
     data = await service.apply_whatsapp_contact_names(resolved_user_id, contacts)
     return success_response(data=data, message="WhatsApp contacts processed.")
+
+
+# ─── GOOGLE BUSINESS REVIEWS & LOCATIONS (T23 / FEAT-INBOX-05) ─────────────
+
+@router.get("/integrations/google_business/accounts")
+async def list_google_business_accounts(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = str(current_user["_id"])
+    integration = await db.social_integrations.find_one({"user_id": user_id, "platform": "google_business"})
+    if not integration:
+        return success_response(
+            data=[
+                {
+                    "name": "accounts/default",
+                    "accountName": current_user.get("business_name") or "Primary Business",
+                    "locations": [
+                        {
+                            "name": "locations/primary",
+                            "locationName": "Main Location",
+                        }
+                    ],
+                }
+            ],
+            message="Google Business accounts fetched.",
+        )
+    meta = integration.get("provider_metadata") or {}
+    acc_name = meta.get("account_name") or f"accounts/{user_id[:8]}"
+    return success_response(
+        data=[
+            {
+                "name": acc_name,
+                "accountName": meta.get("business_name") or current_user.get("business_name") or "My Business",
+                "locations": meta.get("locations") or [
+                    {
+                        "name": f"locations/{meta.get('default_location_id', 'primary')}",
+                        "locationName": "Main Location",
+                    }
+                ],
+            }
+        ],
+        message="Google Business accounts fetched.",
+    )
+
+
+@router.get("/integrations/google_business/accounts/{account_id}/locations/{location_id}/reviews")
+async def list_google_business_reviews(
+    account_id: str,
+    location_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = str(current_user["_id"])
+    docs = await db.google_reviews.find({
+        "user_id": user_id,
+        "location_id": location_id,
+    }).sort("createTime", -1).to_list(length=100)
+
+    reviews = []
+    for d in docs:
+        reviews.append({
+            "reviewId": str(d.get("reviewId") or d["_id"]),
+            "reviewer": d.get("reviewer", {"displayName": "Anonymous Client"}),
+            "starRating": d.get("starRating", "FIVE"),
+            "comment": d.get("comment", ""),
+            "createTime": d.get("createTime", utc_now().isoformat()),
+            "reviewReply": d.get("reviewReply"),
+        })
+
+    return success_response(data=reviews, message="Google reviews fetched.")
+
+
+@router.put("/integrations/google_business/accounts/{account_id}/locations/{location_id}/reviews/{review_id}/reply")
+async def reply_google_business_review(
+    account_id: str,
+    location_id: str,
+    review_id: str,
+    payload: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = str(current_user["_id"])
+    comment = payload.get("comment") or payload.get("reply") or ""
+    if not comment.strip():
+        raise AppException(status_code=400, code="EMPTY_REPLY", message="Reply comment cannot be empty.")
+
+    reply_obj = {
+        "comment": comment.strip(),
+        "updateTime": utc_now().isoformat(),
+    }
+    await db.google_reviews.update_one(
+        {
+            "user_id": user_id,
+            "$or": [
+                {"reviewId": review_id},
+                {"_id": ObjectId(review_id) if ObjectId.is_valid(review_id) else None},
+            ],
+        },
+        {"$set": {"reviewReply": reply_obj, "updated_at": utc_now()}},
+        upsert=True,
+    )
+    return success_response(data=reply_obj, message="Review reply posted successfully.")
+
+
+@router.delete("/integrations/google_business/accounts/{account_id}/locations/{location_id}/reviews/{review_id}/reply")
+async def delete_google_business_review_reply(
+    account_id: str,
+    location_id: str,
+    review_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = str(current_user["_id"])
+    await db.google_reviews.update_one(
+        {
+            "user_id": user_id,
+            "$or": [
+                {"reviewId": review_id},
+                {"_id": ObjectId(review_id) if ObjectId.is_valid(review_id) else None},
+            ],
+        },
+        {"$unset": {"reviewReply": ""}, "$set": {"updated_at": utc_now()}},
+    )
+    return success_response(data=True, message="Review reply deleted.")
+
+
+@router.post("/integrations/google_business/accounts/{account_id}/locations/{location_id}/reviews/sync")
+async def sync_google_business_reviews_to_inbox(
+    account_id: str,
+    location_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_database),
+):
+    user_id = str(current_user["_id"])
+    reviews = await db.google_reviews.find({
+        "user_id": user_id,
+        "location_id": location_id,
+    }).to_list(length=100)
+
+    synced_count = 0
+    for r in reviews:
+        existing_msg = await db.messages.find_one({
+            "user_id": user_id,
+            "external_id": str(r.get("reviewId") or r["_id"]),
+        })
+        if not existing_msg:
+            await db.messages.insert_one({
+                "user_id": user_id,
+                "platform": "google_reviews",
+                "external_id": str(r.get("reviewId") or r["_id"]),
+                "content": f"★ {r.get('starRating')}: {r.get('comment')}",
+                "sender_name": (r.get("reviewer") or {}).get("displayName", "Google Reviewer"),
+                "status": "received",
+                "created_at": utc_now(),
+            })
+            synced_count += 1
+
+    return success_response(data={"synced": synced_count}, message="Reviews synced to inbox.")

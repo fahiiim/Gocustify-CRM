@@ -96,6 +96,8 @@ export const smartflowApi = {
   startAICallTest: () => client.post('/api/v1/smartflow/ai-call-settings/test/start'),
   sendAICallTestMessage: (sessionId, message) => client.post(`/api/v1/smartflow/ai-call-settings/test/${sessionId}/message`, { message }),
   endAICallTest: (sessionId) => client.delete(`/api/v1/smartflow/ai-call-settings/test/${sessionId}`),
+  getIndustryTemplates: () => client.get('/api/v1/smartflow/industry-templates'),
+  getIndustryTemplate: (name) => client.get(`/api/v1/smartflow/industry-templates/${encodeURIComponent(name)}`),
 
   // Integrations
   getIntegrations: () => client.get('/api/v1/smartflow/integrations'),
@@ -236,6 +238,8 @@ export const smartflowApi = {
   editMessage: (id, data) => client.patch(`/api/v1/smartflow/messages/${id}`, data),
 
   // ── Integrations extras ───────────────────────────────────────────────────────
+  setSocialAutoReply: (data) => client.patch('/api/v1/smartflow/integrations/social-auto-reply', data),
+  getSocialAutoReply: (params) => client.get('/api/v1/smartflow/integrations/social-auto-reply', { params }),
   connectWhatsApp: () => client.post('/api/v1/smartflow/integrations/whatsapp/connect'),
   getWhatsAppQr: () => client.get('/api/v1/smartflow/integrations/whatsapp/qr'),
   connectTelegramManual: (data) => client.post('/api/v1/smartflow/integrations/telegram/manual-connect', data),

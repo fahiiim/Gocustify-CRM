@@ -992,19 +992,41 @@ class IntegrationService(SmartFlowBase):
                 await self._handle_social_message_ai(user_id, platform, message)
         return {"status": "processed", "processed": processed, "ignored": ignored}
 
-    async def set_social_auto_reply_enabled(self, user_id: str, enabled: bool) -> dict:
+    async def get_social_auto_reply_enabled(self, user_id: str, platform: str | None = None) -> dict:
+        organization_id = await self._resolve_organization_id(user_id)
+        if not organization_id:
+            return {"enabled": False, "platforms": {}}
+        org = await self.db.organizations.find_one({"organization_id": organization_id}) or {}
+        platforms = org.get("social_auto_reply_platforms") or {}
+        global_enabled = bool(org.get("social_auto_reply_enabled", False))
+        if platform:
+            return {
+                "enabled": platforms.get(platform, global_enabled),
+                "platform": platform,
+                "global_enabled": global_enabled,
+            }
+        return {"enabled": global_enabled, "platforms": platforms}
+
+    async def set_social_auto_reply_enabled(self, user_id: str, enabled: bool, platform: str | None = None) -> dict:
         organization_id = await self._resolve_organization_id(user_id)
         if not organization_id:
             raise AppException(status_code=422, code="NO_ORGANIZATION", message="Your account isn't part of an organization yet.")
+        update_doc: dict[str, Any] = {"social_auto_reply_enabled": enabled, "updated_at": utc_now()}
+        if platform:
+            update_doc[f"social_auto_reply_platforms.{platform}"] = enabled
+            await self.db.social_integrations.update_one(
+                {"organization_id": organization_id, "platform": platform},
+                {"$set": {"auto_reply_enabled": enabled, "updated_at": utc_now()}},
+            )
         await self.db.organizations.update_one(
             {"organization_id": organization_id},
             {
-                "$set": {"social_auto_reply_enabled": enabled, "updated_at": utc_now()},
+                "$set": update_doc,
                 "$setOnInsert": {"organization_id": organization_id, "created_at": utc_now()},
             },
             upsert=True,
         )
-        return {"enabled": enabled}
+        return {"enabled": enabled, "platform": platform}
 
     async def _handle_social_message_ai(self, user_id: str, platform: str, message: dict) -> None:
         """Section 6 (client audit): AI summary of every inbound Facebook/Instagram
@@ -1033,7 +1055,11 @@ class IntegrationService(SmartFlowBase):
 
         organization_id = await self._resolve_organization_id(user_id)
         org = await self.db.organizations.find_one({"organization_id": organization_id}) if organization_id else None
-        if not org or not org.get("social_auto_reply_enabled"):
+        if not org:
+            return
+        platform_toggles = org.get("social_auto_reply_platforms") or {}
+        is_reply_enabled = platform_toggles.get(platform, org.get("social_auto_reply_enabled", False))
+        if not is_reply_enabled:
             return
 
         call_settings = org.get("ai_call_settings") or {}

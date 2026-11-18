@@ -49,6 +49,7 @@ class IntegrationMixin:
         safe["last_sync_at"] = safe.get("last_sync_at")
         safe["last_error"] = safe.get("last_error")
         safe["message_sync_enabled"] = bool(safe.get("message_sync_enabled", adapter.supports_webhooks or adapter.supports_recent_sync))
+        safe["auto_reply_enabled"] = bool(safe.get("auto_reply_enabled", False))
         safe["webhook_status"] = safe.get("webhook_status") or ("configured" if connected and adapter.supports_webhooks else "not_configured")
         safe["external_account_name"] = safe.get("external_account_name")
         needs_reauth = connected and safe.get("sync_status") == "needs_reauth"

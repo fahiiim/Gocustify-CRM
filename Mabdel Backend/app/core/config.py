@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     AI_CALL_MAX_SECONDS: int = 900
     AI_CALL_IDLE_PROMPT_SECONDS: int = 25
     AI_CALL_IDLE_HANGUP_SECONDS: int = 20
+    HOLD_MUSIC_URL: str = "https://assets.gocustify.com/audio/hold-music.mp3"
     OAUTH_STATE_EXPIRE_MINUTES: int = 10
 
     GOOGLE_CLIENT_ID: str | None = None

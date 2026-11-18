@@ -116,7 +116,8 @@ class ConversationDeliveryMixin:
         """Reply to an email thread from the owner's verified business domain."""
         if not contact_id or not ObjectId.is_valid(contact_id):
             return False
-        contact = await self.db.contacts.find_one({"_id": ObjectId(contact_id), "user_id": user_id})
+        team_ids = await self._resolve_team_user_ids(user_id)
+        contact = await self.db.contacts.find_one({"_id": ObjectId(contact_id), "user_id": {"$in": team_ids}})
         if not contact:
             return False
 

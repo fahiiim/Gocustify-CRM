@@ -244,10 +244,32 @@ class AICallSettingsResponse(BaseModel):
     # language, to hang up and call 911 - right for a medical practice, where waiting
     # on a transfer could cost real time.
     emergency_response_mode: Literal["take_message", "direct_to_911"] = "take_message"
-    # Who gets an SMS (not just an in-app notification) the moment an emergency
-    # phrase is detected. Falls back to every team member's own phone number on file
-    # when left blank, so a business gets this working without configuring anything.
     emergency_alert_phone: str | None = None
+    custom_phrases: list[str] = Field(default_factory=list)
+    payments_config: dict = Field(default_factory=lambda: {
+        "accept_by_phone": True,
+        "send_payment_link": True,
+        "confirm_payment_received": True,
+    })
+    recording_config: dict = Field(default_factory=lambda: {
+        "record_calls": True,
+        "generate_transcripts": True,
+        "retention_days": 365,
+        "redact_sensitive_data": True,
+    })
+    outbound_consent_config: dict = Field(default_factory=lambda: {
+        "outbound_calls_enabled": True,
+        "require_consent": True,
+        "use_consent_script": True,
+        "honor_dnc": True,
+    })
+    crm_lead_config: dict = Field(default_factory=lambda: {
+        "create_new_lead_unknown": True,
+        "update_existing_contacts": True,
+        "tag_source_receptionist": True,
+        "avoid_duplicates": True,
+    })
+    industry_conditional_data: dict = Field(default_factory=dict)
 
 
 class AICallSettingsUpdateRequest(BaseModel):
@@ -293,6 +315,12 @@ class AICallSettingsUpdateRequest(BaseModel):
     emergency_keywords: list[str] | None = Field(default=None, max_length=20)
     emergency_response_mode: Literal["take_message", "direct_to_911"] | None = None
     emergency_alert_phone: str | None = Field(default=None, max_length=32)
+    custom_phrases: list[str] | None = None
+    payments_config: dict | None = None
+    recording_config: dict | None = None
+    outbound_consent_config: dict | None = None
+    crm_lead_config: dict | None = None
+    industry_conditional_data: dict | None = None
 
     @field_validator(
         "assistant_name", "business_type", "custom_instructions",

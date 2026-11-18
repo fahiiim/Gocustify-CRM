@@ -68,14 +68,14 @@ class SmartFlowService(SmartFlowBase):
         team_ids = await self._resolve_team_user_ids(user_id)
         team = {"user_id": {"$in": team_ids}}
         calendar_visible = await self._calendar_visibility_filter(user_id)
-        latest_messages = await self.db.messages.find({"user_id": user_id}).sort("timestamp", -1).limit(3).to_list(length=3)
+        latest_messages = await self.db.messages.find(team).sort("timestamp", -1).limit(3).to_list(length=3)
         upcoming_events = await self.db.calendar_events.find(
             {**calendar_visible, "starts_at": {"$gte": utc_now()}}
         ).sort("starts_at", 1).limit(3).to_list(length=3)
         integrations = await self.db.social_integrations.find({**team, "status": "connected"}).to_list(length=50)
         contacts = await self.db.contacts.find(team).sort("updated_at", -1).limit(5).to_list(length=5)
         doc_pipeline = [
-            {"$match": {"user_id": user_id}},
+            {"$match": team},
             {"$group": {"_id": "$type", "count": {"$sum": 1}}},
         ]
         doc_counts = await self.db.documents.aggregate(doc_pipeline).to_list(length=10)
@@ -83,7 +83,7 @@ class SmartFlowService(SmartFlowBase):
         unread_notifications = await self.db.notifications.count_documents({"user_id": user_id, "read": False})
         unread_messages = await self.db.messages.aggregate(
             [
-                {"$match": {"user_id": user_id}},
+                {"$match": team},
                 {"$group": {"_id": None, "total": {"$sum": "$unread_count"}}},
             ]
         ).to_list(length=1)
@@ -712,8 +712,11 @@ class SmartFlowService(SmartFlowBase):
     async def handle_meta_webhook(self, platform, payload):
         return await self.integration_service.handle_meta_webhook(platform, payload)
 
-    async def set_social_auto_reply_enabled(self, user_id: str, enabled: bool) -> dict:
-        return await self.integration_service.set_social_auto_reply_enabled(user_id, enabled)
+    async def get_social_auto_reply_enabled(self, user_id: str, platform: str | None = None) -> dict:
+        return await self.integration_service.get_social_auto_reply_enabled(user_id, platform=platform)
+
+    async def set_social_auto_reply_enabled(self, user_id: str, enabled: bool, platform: str | None = None) -> dict:
+        return await self.integration_service.set_social_auto_reply_enabled(user_id, enabled, platform=platform)
 
     async def handle_inbound_webhook_batch(self, user_id, platform, messages):
         return await self.integration_service.handle_inbound_webhook_batch(user_id, platform, messages)

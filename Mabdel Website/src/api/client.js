@@ -47,9 +47,22 @@ client.interceptors.request.use((config) => {
 
 // Access tokens are short-lived (30 min); silently exchange the refresh token
 // for a new one on a 401 instead of just logging the user out mid-session.
-let refreshInFlight = null;
+// Mutex queue pattern prevents duplicate refresh calls when concurrent requests 401.
+let isRefreshing = false;
+let failedQueue = [];
 
-async function refreshAccessToken() {
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+export async function refreshAccessToken() {
   const refreshToken = localStorage.getItem('refresh_token');
   if (!refreshToken) throw new Error('No refresh token available.');
   // Regression: this bypasses the `client` instance (it must stay unauthenticated,
@@ -70,19 +83,33 @@ client.interceptors.response.use(
     const originalRequest = error.config;
     const isAuthEndpoint = originalRequest?.url?.includes('/auth/login') || originalRequest?.url?.includes('/auth/refresh-token');
     if (error.response?.status === 401 && !originalRequest?._retry && !isAuthEndpoint) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return client(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
       originalRequest._retry = true;
+      isRefreshing = true;
+
       try {
-        refreshInFlight = refreshInFlight || refreshAccessToken();
-        const newAccessToken = await refreshInFlight;
-        refreshInFlight = null;
+        const newAccessToken = await refreshAccessToken();
+        processQueue(null, newAccessToken);
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return client(originalRequest);
-      } catch {
-        refreshInFlight = null;
+      } catch (refreshErr) {
+        processQueue(refreshErr, null);
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         clearCallsCache();
-        return Promise.reject(error);
+        return Promise.reject(refreshErr);
+      } finally {
+        isRefreshing = false;
       }
     }
 

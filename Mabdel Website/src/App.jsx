@@ -26,6 +26,7 @@ const Subscription = lazy(() => import('./pages/Subscription'));
 const Begin = lazy(() => import('./pages/Begin'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const VoiceConversation = lazy(() => import('./pages/VoiceConversation'));
+const AIReceptionist = lazy(() => import('./pages/AIReceptionist'));
 const AiCall = lazy(() => import('./pages/AiCall'));
 const JoinEvent = lazy(() => import('./pages/JoinEvent'));
 const ConfirmMeeting = lazy(() => import('./pages/ConfirmMeeting'));
@@ -88,6 +89,8 @@ function App() {
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/voice-conversation" element={<VoiceConversation />} />
+            <Route path="/voice-assistant" element={<AIReceptionist />} />
+            <Route path="/ai-receptionist" element={<AIReceptionist />} />
             <Route path="/join-event" element={<JoinEvent />} />
           </Route>
 
