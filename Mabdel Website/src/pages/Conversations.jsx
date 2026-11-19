@@ -979,6 +979,7 @@ export default function Conversations() {
         conversation_id: newConvId,
         content: message,
         platform: 'sms',
+        direction: 'outbound',
       });
 
       setNewSmsModalVisible(false);

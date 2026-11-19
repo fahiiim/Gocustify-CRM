@@ -46,7 +46,12 @@ export const useAuthStore = create((set) => ({
     }
   },
 
-  logout: () => {
+  logout: async () => {
+    try {
+      await client.post('/api/v1/auth/logout');
+    } catch {
+      // Ignore logout errors
+    }
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     clearCallsCache();

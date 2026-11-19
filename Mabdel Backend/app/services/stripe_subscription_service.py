@@ -67,7 +67,7 @@ def create_subscription_checkout_session(payload: OwnerCreateRequest) -> str:
     checkout.session.completed webhook. This avoids leaving an orphaned account
     behind for every visitor who starts checkout and abandons it."""
 
-    tier = (payload.tier or "").strip().lower()
+    tier = (payload.tier or payload.plan or "").strip().lower()
     if tier not in _TIER_PRICE_ENV:
         raise AppException(
             status_code=400,

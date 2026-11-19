@@ -366,6 +366,12 @@ class AuthService:
                 code="USER_NOT_FOUND",
                 message="User for this token no longer exists.",
             )
+        if user.get("status") == "blocked":
+            raise AppException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                code="ACCOUNT_BLOCKED",
+                message="This account has been blocked.",
+            )
         return self._user_to_response(user)
 
     async def logout(self, access_token: str) -> MessageResponse:

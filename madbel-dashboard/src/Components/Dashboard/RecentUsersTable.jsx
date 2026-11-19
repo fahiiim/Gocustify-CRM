@@ -17,18 +17,29 @@ const getOriginalAvatarUrl = (user) =>
   user?.profile?.avatarUrl ||
   "";
 
-const normalizeUser = (user, index) => ({
-  id: user?.id || user?._id || user?.userId || index + 1,
-  name: user?.name || user?.fullName || user?.username || "Unknown",
-  email: user?.email || "N/A",
-  joinedDate: user?.joinedAt
-    ? new Date(user.joinedAt).toLocaleDateString()
-    : user?.createdAt
-      ? new Date(user.createdAt).toLocaleDateString()
-      : user?.joinedDate || "N/A",
-  avatar: getOriginalAvatarUrl(user),
-  raw: user,
-});
+const normalizeUser = (user, index) => {
+  const rawDate = user?.created_at || user?.createdAt || user?.joined_date || user?.joinedDate || user?.joinedAt;
+  let formattedDate = "N/A";
+  if (rawDate) {
+    try {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        formattedDate = d.toLocaleDateString();
+      }
+    } catch {
+      formattedDate = String(rawDate);
+    }
+  }
+
+  return {
+    id: user?.id || user?._id || user?.userId || index + 1,
+    name: user?.full_name || user?.fullName || user?.name || user?.username || "Unknown",
+    email: user?.email || "N/A",
+    joinedDate: formattedDate,
+    avatar: getOriginalAvatarUrl(user),
+    raw: user,
+  };
+};
 
 const RecentUsersTable = ({ users = [] }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);

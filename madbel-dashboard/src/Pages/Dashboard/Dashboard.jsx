@@ -97,7 +97,8 @@ const Dashboard = () => {
         // Load profile to verify role
         const profilePayload = await getMyProfile().catch(() => null);
         const profile = profilePayload?.data || profilePayload;
-        const superAdminFlag = profile?.role === "super_admin";
+        const userRole = profile?.primary_role || profile?.role;
+        const superAdminFlag = userRole === "super_admin" || userRole === "admin";
         
         if (mounted) {
           setIsSuperAdmin(superAdminFlag);

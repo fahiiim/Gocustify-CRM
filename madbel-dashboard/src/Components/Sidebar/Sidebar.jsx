@@ -1,6 +1,7 @@
 import { FiLogOut } from "react-icons/fi";
 import { BiChevronDown } from "react-icons/bi";
 import { Link, useLocation } from "react-router-dom";
+import { logoutAdmin } from "../../services/authApi";
 import { MdDashboard } from "react-icons/md";
 import brandlogo from "../../assets/image/gocustify-mark.png";
 import {
@@ -77,6 +78,7 @@ const Sidebar = ({ closeDrawer }) => {
   const menuItems = ROLE_MENU[role] || ADMIN_MENU;
 
   const handleLogout = () => {
+    logoutAdmin().catch(() => {});
     clearAdminSession();
     if (closeDrawer) closeDrawer();
     window.location.replace("/sign-in");

@@ -929,7 +929,16 @@ class LeaseAgreementMixin:
         return signature_request
 
     async def _complete_agreement_signature(self, agreement: dict, payload: dict, *, signed_by_user_id: str | None) -> dict:
-        if agreement.get("status") == "signed":
+        is_lease = agreement.get("agreement_type") == "lease"
+        existing_sig = agreement.get("signature")
+        already_signed_by_same = False
+        if existing_sig:
+            if signed_by_user_id and existing_sig.get("signed_by_user_id") == signed_by_user_id:
+                already_signed_by_same = True
+            elif not signed_by_user_id and not existing_sig.get("signed_by_user_id"):
+                already_signed_by_same = True
+
+        if agreement.get("status") == "signed" and not (is_lease and not already_signed_by_same):
             raise AppException(status_code=409, code="AGREEMENT_ALREADY_SIGNED", message="This agreement has already been signed.")
         if agreement.get("status") in {"cancelled", "expired"}:
             raise AppException(status_code=409, code="AGREEMENT_NOT_SIGNABLE", message="Cancelled or expired agreements cannot be signed.")
@@ -942,16 +951,21 @@ class LeaseAgreementMixin:
             "signed_at": signed_at,
             "signed_by_user_id": signed_by_user_id,
         }
+        set_updates = {
+            "status": "signed",
+            "signed_at": signed_at,
+            "updated_at": signed_at,
+        }
+        if is_lease and existing_sig:
+            set_updates["countersignature"] = signature
+            set_updates["landlord_signature"] = signature if signed_by_user_id else existing_sig
+            set_updates["tenant_signature"] = existing_sig if signed_by_user_id else signature
+        else:
+            set_updates["signature"] = signature
+
         updated = await self.db.agreements.find_one_and_update(
             {"_id": agreement["_id"]},
-            {
-                "$set": {
-                    "status": "signed",
-                    "signature": signature,
-                    "signed_at": signed_at,
-                    "updated_at": signed_at,
-                }
-            },
+            {"$set": set_updates},
             return_document=ReturnDocument.AFTER,
         )
         await self.db.signature_requests.update_many(

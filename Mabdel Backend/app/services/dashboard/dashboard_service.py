@@ -186,7 +186,9 @@ class DashboardService:
                 email=item.get("email", ""),
                 phone_no=item.get("phone_no"),
                 joined_date=item.get("created_at", utc_now()),
-                status=item.get("status", "active")
+                created_at=item.get("created_at", utc_now()),
+                status=item.get("status", "active"),
+                role=item.get("primary_role") or item.get("role", "user"),
             )
             for item in items
         ]
@@ -204,7 +206,9 @@ class DashboardService:
             email=item.get("email", ""),
             phone_no=item.get("phone_no"),
             joined_date=item.get("created_at", utc_now()),
-            status=item.get("status", "active")
+            created_at=item.get("created_at", utc_now()),
+            status=item.get("status", "active"),
+            role=item.get("primary_role") or item.get("role", "user"),
         )
 
     async def toggle_user_status(self, user_id: str, status: str) -> bool:

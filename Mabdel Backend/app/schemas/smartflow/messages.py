@@ -24,7 +24,7 @@ class MessageCreateRequest(BaseModel):
     conversation_id: str
     contact_id: str | None = None
     platform: PlatformType
-    direction: MessageDirection
+    direction: MessageDirection = "outbound"
     content: str | None = None
     media_url: str | None = None
     attachments: list[MessageAttachment] = Field(default_factory=list)

@@ -114,12 +114,27 @@ export default function AgreementCreator({ onCreated, prefill }) {
     }
     setError(''); setCreating(true);
     try {
-      await smartflowApi.createAgreement({
+      const res = await smartflowApi.createAgreement({
         ...form,
         start_date: normalizeDate(form.start_date),
         content: content.trim(),
         status: signatureEnabled ? 'pending_signature' : 'draft',
       });
+      const agreementData = res?.data?.data || res?.data || res;
+      const agreementId = agreementData?.id || agreementData?._id;
+      if (signatureEnabled && agreementId) {
+        try {
+          await smartflowApi.agreementSendSignature(agreementId, {
+            recipient_name: form.client_name.trim(),
+            recipient_email: form.client_email.trim() || undefined,
+            signer_name: form.client_name.trim(),
+            signer_email: form.client_email.trim() || undefined,
+            channel: 'link',
+          });
+        } catch (e) {
+          console.warn('Could not auto-send signature request:', e);
+        }
+      }
       setSuccess(t('docs_msg_agreement_created'));
       setForm({ title: '', client_name: '', client_email: '', client_phone: '', agreement_type: 'contract', start_date: '' });
       setPrompt(''); setContent(''); setAiReview([]);

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -387,14 +388,17 @@ class RBACService:
         )
         
         # Send email with plaintext credentials to the original_email
-        from app.services.email_service import EmailService
-        email_svc = EmailService()
-        await email_svc.send_subordinate_credentials_email(
-            email=payload.original_email,
-            login_email=generated_login_email,
-            password=generated_password,
-            role=payload.target_role
-        )
+        try:
+            from app.services.email_service import EmailService
+            email_svc = EmailService()
+            await email_svc.send_subordinate_credentials_email(
+                email=payload.original_email,
+                login_email=generated_login_email,
+                password=generated_password,
+                role=payload.target_role
+            )
+        except Exception as e:
+            logging.getLogger(__name__).warning("Failed to send subordinate credentials email: %s", e)
 
         await self.log_action(
             actor_id=creator_id,

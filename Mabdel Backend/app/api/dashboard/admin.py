@@ -159,6 +159,15 @@ async def update_user_status(
     """
     Update a user's status (e.g., 'active', 'blocked'). This corresponds to the 'Block/Unblock' buttons in the UI.
     """
+    actor_role = current_user.get("primary_role") or current_user.get("role", "user")
+    if actor_role != "super_admin":
+        from app.models.rbac_models import ROLE_HIERARCHY
+        from app.core.exceptions import AppException
+        target = await service.get_user_by_id(user_id)
+        target_role = getattr(target, "role", None) or "user"
+        if ROLE_HIERARCHY.get(target_role, 0) >= ROLE_HIERARCHY.get(actor_role, 0):
+            raise AppException(status_code=403, code="INSUFFICIENT_PRIVILEGES", message="Cannot modify user with equal or higher role than yourself.")
+
     body = body or {}
     status = status or body.get("status")
     if not status:
@@ -175,6 +184,15 @@ async def update_user(
     current_user: dict = Depends(require_role(["super_admin", "admin"])),
     service: DashboardService = Depends(get_dashboard_service),
 ):
+    actor_role = current_user.get("primary_role") or current_user.get("role", "user")
+    if actor_role != "super_admin":
+        from app.models.rbac_models import ROLE_HIERARCHY
+        from app.core.exceptions import AppException
+        target = await service.get_user_by_id(user_id)
+        target_role = getattr(target, "role", None) or "user"
+        if ROLE_HIERARCHY.get(target_role, 0) >= ROLE_HIERARCHY.get(actor_role, 0):
+            raise AppException(status_code=403, code="INSUFFICIENT_PRIVILEGES", message="Cannot modify user with equal or higher role than yourself.")
+
     body = body or {}
     status = body.get("status")
     if status or "isBlocked" in body or "blocked" in body:
@@ -584,7 +602,7 @@ async def reset_password(
 # INBOX (Messaging) Endpoints
 @router.get("/chats", response_model=BaseResponse[list[ChatConversation]])
 async def get_all_conversations(
-    current_user: dict = Depends(require_role(["super_admin", "admin", "owner", "supervisor", "staff"])),
+    current_user: dict = Depends(require_role(["super_admin", "admin"])),
     service: DashboardService = Depends(get_dashboard_service),
 ):
     """
@@ -597,7 +615,7 @@ async def get_all_conversations(
 @router.get("/chats/{user_id}/messages", response_model=BaseResponse[list[ChatMessage]])
 async def get_chat_messages(
     user_id: str,
-    current_user: dict = Depends(require_role(["super_admin", "admin", "owner", "supervisor", "staff"])),
+    current_user: dict = Depends(require_role(["super_admin", "admin"])),
     service: DashboardService = Depends(get_dashboard_service),
 ):
     """
@@ -612,7 +630,7 @@ async def send_message(
     user_id: str,
     text: str | None = None,
     image_url: str | None = None,
-    current_user: dict = Depends(require_role(["super_admin", "admin", "owner", "supervisor", "staff"])),
+    current_user: dict = Depends(require_role(["super_admin", "admin"])),
     service: DashboardService = Depends(get_dashboard_service),
 ):
     """
