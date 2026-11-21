@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Activity,
+  AlertTriangle,
   Calendar,
   CheckCircle2,
   ChevronDown,
@@ -16,6 +17,7 @@ import {
   Send,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Volume2,
   X,
   XCircle,
@@ -236,7 +238,13 @@ export default function VoiceConversation() {
   ], [t]);
 
   const pushMessage = useCallback((message) => {
-    setMessages((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, ...message }]);
+    setMessages((prev) => {
+      if (message.tone === 'error' && prev.length > 0) {
+        const last = prev[prev.length - 1];
+        if (last.text === message.text) return prev;
+      }
+      return [...prev, { id: `${Date.now()}-${Math.random()}`, ...message }];
+    });
   }, []);
 
   const persistConversationId = useCallback((value) => {
@@ -515,16 +523,21 @@ export default function VoiceConversation() {
   );
 
   const startListening = useCallback(async () => {
+    const isLocal = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const isSecure = typeof window !== 'undefined' && (window.isSecureContext || isLocal);
+
+    if (!isSecure && (!navigator?.mediaDevices || !navigator?.mediaDevices?.getUserMedia)) {
+      setPermissionState('insecure_origin');
+      setMicError('Chrome restricts microphone on HTTP IP addresses. Access via http://localhost:5173 or enable HTTPS.');
+      setVoiceLoading(false);
+      return;
+    }
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       setPermissionState('unsupported');
       setMicError(t('vcon_err_speech_unsupported'));
-      pushMessage({
-        role: 'assistant',
-        text: t('vcon_err_speech_unsupported_chat'),
-        tone: 'error',
-      });
       return;
     }
 
@@ -532,8 +545,10 @@ export default function VoiceConversation() {
     setMicError('');
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
+      if (navigator?.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      }
       setPermissionState('granted');
 
       const recognition = new SpeechRecognition();
@@ -570,8 +585,18 @@ export default function VoiceConversation() {
 
       recognition.onerror = (event) => {
         const errorCode = event.error || 'unknown';
-        setPermissionState(errorCode === 'not-allowed' ? 'denied' : 'error');
-        setMicError(errorCode === 'not-allowed' ? t('vcon_err_mic_denied') : t('vcon_err_mic_code', { code: errorCode }));
+        if (errorCode === 'not-allowed') {
+          if (!isSecure) {
+            setPermissionState('insecure_origin');
+            setMicError('Chrome blocks microphone on plain HTTP IP addresses. Access via http://localhost:5173 or enable HTTPS.');
+          } else {
+            setPermissionState('denied');
+            setMicError(t('vcon_err_mic_denied'));
+          }
+        } else {
+          setPermissionState('error');
+          setMicError(t('vcon_err_mic_code', { code: errorCode }));
+        }
       };
 
       recognition.onend = () => {
@@ -586,18 +611,19 @@ export default function VoiceConversation() {
 
       recognitionRef.current = recognition;
       recognition.start();
-    } catch {
-      setPermissionState('denied');
-      setMicError(t('vcon_err_mic_denied'));
-      pushMessage({
-        role: 'assistant',
-        text: t('vcon_err_mic_denied_chat'),
-        tone: 'error',
-      });
+    } catch (err) {
+      const isDenied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+      if (!isSecure && (err?.name === 'TypeError' || !navigator?.mediaDevices)) {
+        setPermissionState('insecure_origin');
+        setMicError('Chrome restricts microphone on HTTP IP addresses. Access via http://localhost:5173 or enable HTTPS.');
+      } else {
+        setPermissionState(isDenied ? 'denied' : 'error');
+        setMicError(isDenied ? t('vcon_err_mic_denied') : (err?.message || t('vcon_err_mic_denied')));
+      }
     } finally {
       setVoiceLoading(false);
     }
-  }, [aiLanguage, pushMessage, sendPrompt, t]);
+  }, [aiLanguage, sendPrompt, t]);
 
   useEffect(() => {
     setStoredAiLanguage(aiLanguage);
@@ -621,6 +647,14 @@ export default function VoiceConversation() {
         setVoices(Array.isArray(data) ? data : []);
       })
       .catch(() => setVoices([]));
+
+    if (typeof window !== 'undefined') {
+      const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      if (!window.isSecureContext && !isLocal) {
+        setPermissionState('insecure_origin');
+        setMicError('Chrome restricts microphone on HTTP IP addresses. Access via http://localhost:5173 or HTTPS.');
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -682,6 +716,7 @@ export default function VoiceConversation() {
   const assistantStatus = useMemo(() => {
     if (isListening) return t('vcon_status_listening');
     if (isThinking || workflowBusy) return t('vcon_status_thinking');
+    if (permissionState === 'insecure_origin') return 'Localhost or HTTPS Required';
     if (permissionState === 'denied') return t('vcon_status_perm_denied');
     if (permissionState === 'unsupported') return t('vcon_status_voice_unavailable');
     return t('vcon_status_ready');
@@ -810,6 +845,14 @@ export default function VoiceConversation() {
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{t('vcon_lbl_assistant_status')}</p>
           <p className="text-white font-semibold mt-2">{assistantStatus}</p>
           {micError ? <p className="text-rose-300 text-xs mt-2">{micError}</p> : null}
+          {permissionState === 'insecure_origin' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? (
+            <a
+              href={`http://localhost:5173${window.location.pathname}`}
+              className="mt-3 block text-center px-3 py-1.5 bg-purple-500 hover:bg-purple-400 text-slate-950 font-bold rounded-lg text-xs transition-colors"
+            >
+              Switch to localhost:5173
+            </a>
+          ) : null}
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
@@ -942,6 +985,15 @@ export default function VoiceConversation() {
               </div>
 
               <div className="flex items-center gap-2">
+                {messages.length > 0 && (
+                  <button
+                    onClick={() => setMessages([])}
+                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    title="Clear chat messages"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     if (audioRef.current) audioRef.current.play().catch(() => {});
@@ -1062,10 +1114,37 @@ export default function VoiceConversation() {
             </div>
 
             <div className="p-3 sm:p-4 md:p-6 bg-slate-950/40 border-t border-[#243041]/40 space-y-2.5 sm:space-y-3">
-              {permissionState === 'denied' ? (
-                <div className="text-xs text-rose-300 flex items-center gap-2">
-                  <XCircle size={14} />
-                  {t('vcon_mic_denied_bar')}
+              {permissionState === 'insecure_origin' ? (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs text-amber-200">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+                    <span>
+                      <strong>Microphone requires HTTPS or Localhost:</strong> Chrome restricts microphone on plain HTTP IP addresses (<code className="bg-amber-950/40 px-1 py-0.5 rounded text-amber-300 font-mono text-[11px]">{typeof window !== 'undefined' ? window.location.hostname : 'IP'}</code>). Text chat is still fully active!
+                    </span>
+                  </div>
+                  {typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+                    <a
+                      href={`http://localhost:5173${window.location.pathname}`}
+                      className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs whitespace-nowrap transition-colors self-end sm:self-auto cursor-pointer"
+                    >
+                      Open via localhost:5173
+                    </a>
+                  )}
+                </div>
+              ) : permissionState === 'denied' ? (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs text-rose-200">
+                  <div className="flex items-center gap-2">
+                    <XCircle size={16} className="text-rose-400 shrink-0" />
+                    <span>
+                      <strong>Microphone Blocked:</strong> Click the camera/microphone icon in Chrome&apos;s address bar to allow microphone access, then click retry.
+                    </span>
+                  </div>
+                  <button
+                    onClick={startListening}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 font-semibold text-xs whitespace-nowrap transition-colors cursor-pointer self-end sm:self-auto"
+                  >
+                    Retry Permission
+                  </button>
                 </div>
               ) : null}
 
