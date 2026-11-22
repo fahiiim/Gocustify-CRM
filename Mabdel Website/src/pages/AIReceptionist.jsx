@@ -236,8 +236,9 @@ export default function AIReceptionist() {
       const normKey = industryKey.includes('Dentist') || industryKey === 'Dental Clinic' ? 'Dentist (Dental Clinic)'
         : industryKey.includes('Law') ? 'Law Firm'
         : industryKey.includes('Home') ? 'Home Services (Plumbing, Electrical, HVAC)'
-        : industryKey.includes('Restaurant') ? 'Restaurant'
-        : industryKey.includes('Auto') ? 'Auto Repair Shop'
+        : industryKey.includes('Dealer') || industryKey.includes('Car') ? 'Car Dealership'
+        : industryKey.includes('Wellness') ? 'Wellness Center'
+        : industryKey.includes('Accounting') || industryKey.includes('Bookkeeping') ? 'Accounting / Bookkeeping Firm'
         : industryKey.includes('Real Estate') ? 'Real Estate Agency'
         : industryKey.includes('Vet') ? 'Veterinary Clinic'
         : industryKey.includes('Medical') ? 'Medical Clinic'
@@ -433,11 +434,11 @@ export default function AIReceptionist() {
   };
 
   // Conditional Card check
-  const isHealthcare = selectedIndustry.includes('Dentist') || selectedIndustry.includes('Medical') || selectedIndustry.includes('Chiro');
+  const isHealthcare = selectedIndustry.includes('Dentist') || selectedIndustry.includes('Medical') || selectedIndustry.includes('Chiro') || selectedIndustry.includes('Wellness');
   const isLawFirm = selectedIndustry.includes('Law');
   const isHomeServices = selectedIndustry.includes('Home');
-  const isRestaurant = selectedIndustry.includes('Restaurant');
-  const isAutoRepair = selectedIndustry.includes('Auto');
+  const isDealership = selectedIndustry.includes('Dealer') || selectedIndustry.includes('Car');
+  const isAccounting = selectedIndustry.includes('Accounting') || selectedIndustry.includes('Bookkeeping');
   const isRealEstate = selectedIndustry.includes('Real Estate');
   const isVeterinary = selectedIndustry.includes('Veterinary');
 
@@ -515,10 +516,11 @@ export default function AIReceptionist() {
                   <option value="Dentist (Dental Clinic)">🦷 Dentist (Dental Clinic)</option>
                   <option value="Medical Clinic">🩺 Medical Clinic</option>
                   <option value="Chiropractor">🦴 Chiropractor</option>
+                  <option value="Wellness Center">🌸 Wellness Center</option>
                   <option value="Law Firm">⚖️ Law Firm</option>
                   <option value="Home Services (Plumbing, Electrical, HVAC)">🔧 Home Services (Plumbing, HVAC)</option>
-                  <option value="Restaurant">🍽️ Restaurant</option>
-                  <option value="Auto Repair Shop">🚗 Auto Repair Shop</option>
+                  <option value="Car Dealership">🚘 Car Dealership</option>
+                  <option value="Accounting / Bookkeeping Firm">📊 Accounting & Tax Firm</option>
                   <option value="Real Estate Agency">🏢 Real Estate Agency</option>
                   <option value="Veterinary Clinic">🐾 Veterinary Clinic</option>
                   <option value="Other">🌐 Other / General Business</option>
@@ -561,11 +563,11 @@ export default function AIReceptionist() {
             { id: 'knowledge', label: 'Knowledge' },
             { id: 'services', label: 'Services' },
             { id: 'staff', label: 'Staff' },
-            ...(isHealthcare ? [{ id: 'insurance', label: 'Insurance' }] : []),
+            ...(isHealthcare ? [{ id: 'insurance', label: 'Healthcare & Insurance' }] : []),
             ...(isLawFirm ? [{ id: 'legal', label: 'Legal Intake' }] : []),
             ...(isHomeServices ? [{ id: 'dispatch', label: 'Service Area' }] : []),
-            ...(isRestaurant ? [{ id: 'reservations', label: 'Reservations' }] : []),
-            ...(isAutoRepair ? [{ id: 'auto-repair', label: 'Vehicle Intake' }] : []),
+            ...(isDealership ? [{ id: 'dealership', label: 'Dealership & Inventory' }] : []),
+            ...(isAccounting ? [{ id: 'accounting', label: 'Tax & Portal' }] : []),
             ...(isRealEstate ? [{ id: 'real-estate', label: 'Property Listings' }] : []),
             ...(isVeterinary ? [{ id: 'veterinary', label: 'Pet Care' }] : []),
             { id: 'routing', label: 'Routing' },
@@ -1014,29 +1016,57 @@ export default function AIReceptionist() {
               </div>
             )}
 
-            {isRestaurant && (
-              <div id="reservations" className="bg-[#14141f] border border-[#2e2640] rounded-2xl p-5 shadow-lg">
+            {isDealership && (
+              <div id="dealership" className="bg-[#14141f] border border-[#2e2640] rounded-2xl p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <Utensils className="h-4 w-4 text-purple-400" />
-                    <h3 className="font-semibold text-sm text-white">Reservations & Party Rules</h3>
+                    <Car className="h-4 w-4 text-purple-400" />
+                    <h3 className="font-semibold text-sm text-white">Dealership & Inventory Rules</h3>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-medium">
-                    Restaurant Only
+                    Car Dealership Only
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-xs mt-3">
                   <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
-                    <div className="text-slate-400">Max Auto Party Size</div>
-                    <div className="font-bold text-slate-100 text-sm mt-1">8 Guests</div>
+                    <div className="text-slate-400">Driver License Req</div>
+                    <div className="font-bold text-slate-100 text-sm mt-1">Yes (Before Test Drive)</div>
                   </div>
                   <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
-                    <div className="text-slate-400">Large Party Deposit</div>
-                    <div className="font-bold text-slate-100 text-sm mt-1">$25 / person</div>
+                    <div className="text-slate-400">Trade-In Appraisal</div>
+                    <div className="font-bold text-slate-100 text-sm mt-1">Physical Inspection</div>
                   </div>
                   <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
-                    <div className="text-slate-400">Cancel Window</div>
-                    <div className="font-bold text-slate-100 text-sm mt-1">24 Hours</div>
+                    <div className="text-slate-400">Min Age (Test Drive)</div>
+                    <div className="font-bold text-slate-100 text-sm mt-1">18+ with Insurance</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isAccounting && (
+              <div id="accounting" className="bg-[#14141f] border border-[#2e2640] rounded-2xl p-5 shadow-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-purple-400" />
+                    <h3 className="font-semibold text-sm text-white">Tax Filing & Portal Policies</h3>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-medium">
+                    Accounting & Tax Only
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-xs mt-3">
+                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                    <div className="text-slate-400">Tax Season Cutoff</div>
+                    <div className="font-bold text-slate-100 text-sm mt-1">April 15 / Oct 15</div>
+                  </div>
+                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                    <div className="text-slate-400">IRS Notice Review</div>
+                    <div className="font-bold text-slate-100 text-sm mt-1">Priority Partner Queue</div>
+                  </div>
+                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                    <div className="text-slate-400">Document Upload</div>
+                    <div className="font-bold text-slate-100 text-sm mt-1">Instant SMS Portal Link</div>
                   </div>
                 </div>
               </div>
@@ -1165,7 +1195,7 @@ export default function AIReceptionist() {
 
               {/* Brand Phrases Chips */}
               <div className="pt-3 border-t border-[#232334]">
-                <div className="text-xs font-medium text-slate-300 mb-2">Brand Phrasing (Keywords AI Prefers)</div>
+                <div className="text-xs font-medium text-slate-300 mb-2">Custom Phrases / Additional Recognition Phrases (Optional)</div>
                 <div className="flex flex-wrap items-center gap-2">
                   {customPhrases.map((phrase) => (
                     <span key={phrase} className="px-3 py-1 rounded-full text-xs bg-purple-950/60 text-purple-200 border border-purple-800/80 flex items-center gap-1.5">
@@ -1621,13 +1651,14 @@ export default function AIReceptionist() {
                 {[
                   { key: 'Dentist (Dental Clinic)', name: 'Dentist (Dental Clinic)', icon: '🦷', desc: 'Preloads dental cleaning, exam, implant, and insurance verification (Delta, Aetna).' },
                   { key: 'Medical Clinic', name: 'Medical Clinic', icon: '🩺', desc: 'Preloads physical exams, prescription requests, triage, and Medicare/UHC insurance.' },
+                  { key: 'Chiropractor', name: 'Chiropractor Clinic', icon: '🦴', desc: 'Preloads spinal adjustments, new patient exam fees, and auto accident / PI intake.' },
+                  { key: 'Wellness Center', name: 'Wellness Center', icon: '🌸', desc: 'Preloads IV hydration, cryotherapy, infrared sauna, massage, and contraindication screening.' },
                   { key: 'Law Firm', name: 'Law Firm', icon: '⚖️', desc: 'Preloads personal injury intake, consultations, conflict check, and attorney routing.' },
                   { key: 'Home Services (Plumbing, Electrical, HVAC)', name: 'Home Services', icon: '🔧', desc: 'Preloads emergency dispatch, diagnostic fees, service area radius, and trade techs.' },
-                  { key: 'Restaurant', name: 'Restaurant & Dining', icon: '🍽️', desc: 'Preloads table reservations, party limits, private dining, and catering inquiries.' },
-                  { key: 'Auto Repair Shop', name: 'Auto Repair Shop', icon: '🚗', desc: 'Preloads synthetic oil changes, diagnostic fees, loaner vehicles, and towing hotline.' },
+                  { key: 'Car Dealership', name: 'Car Dealership', icon: '🚘', desc: 'Preloads vehicle inventory search, test drive scheduling, trade-in valuations, and service bay.' },
+                  { key: 'Accounting / Bookkeeping Firm', name: 'Accounting & Tax Firm', icon: '📊', desc: 'Preloads tax return preparation, bookkeeping, IRS notices, and secure upload link.' },
                   { key: 'Real Estate Agency', name: 'Real Estate Agency', icon: '🏢', desc: 'Preloads property showings, buyer pre-qualifications, CMA home valuations, and open houses.' },
                   { key: 'Veterinary Clinic', name: 'Veterinary Clinic', icon: '🐾', desc: 'Preloads pet wellness exams, vaccinations, Trupanion pet insurance, and emergency triage.' },
-                  { key: 'Chiropractor', name: 'Chiropractor Clinic', icon: '🦴', desc: 'Preloads spinal adjustments, new patient exam fees, and chiropractic insurance plans.' },
                   { key: 'Other', name: 'General Business', icon: '🌐', desc: 'Universal master template with appointment booking, lead capture, and FAQs.' },
                 ].map((tmpl) => (
                   <button

@@ -31,13 +31,20 @@ export const SMS_WORDING_KINDS = [
   { key: 'cancellation_declined', label: 'When a cancellation request is turned down', builtIn: '{business}: we were not able to cancel your appointment on {when}. It is still on the books - call us with any questions.' },
 ];
 
-// A curated starting list, not an enum enforced server-side — the field stays a
-// free string so a business whose type isn't listed can still type it via "Other".
+// A curated starting list, aligned with the Master AI Receptionist specification.
+// Removed verticals (Restaurant, Auto Repair, Salon, Fitness, Retail, Photography, Insurance Agency)
+// are replaced with active verified verticals.
 export const BUSINESS_TYPE_OPTIONS = [
-  'Dental Clinic', 'Medical Clinic', 'Chiropractor', 'Law Firm', 'Real Estate Agency', 'Restaurant',
-  'Salon / Spa', 'Home Services (Plumbing, Electrical, HVAC)', 'Auto Repair Shop',
-  'Fitness Studio / Gym', 'Retail Store', 'Accounting / Bookkeeping Firm',
-  'Insurance Agency', 'Veterinary Clinic', 'Photography Studio', 'Consulting Firm',
+  'Dental Clinic',
+  'Medical Clinic',
+  'Chiropractor',
+  'Wellness Center',
+  'Law Firm',
+  'Real Estate Agency',
+  'Home Services (Plumbing, Electrical, HVAC)',
+  'Car Dealership',
+  'Accounting / Bookkeeping Firm',
+  'Veterinary Clinic',
 ];
 
 // Capability choices are enforced by the server on every action.
@@ -55,7 +62,7 @@ export const AI_CAPABILITIES = [
 
 // Mirrors INSURANCE_ELIGIBLE_BUSINESS_TYPES in industry_templates.py - where "do you
 // take my insurance" actually comes up.
-export const INSURANCE_ELIGIBLE_BUSINESS_TYPES = ['Dental Clinic', 'Medical Clinic', 'Chiropractor'];
+export const INSURANCE_ELIGIBLE_BUSINESS_TYPES = ['Dental Clinic', 'Medical Clinic', 'Chiropractor', 'Wellness Center'];
 export const NETWORK_STATUS_OPTIONS = ['in_network', 'out_of_network', 'plan_dependent', 'unknown'];
 
 // Mirrors NotifyRole in app/schemas/smartflow.py.
