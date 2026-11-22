@@ -23,6 +23,9 @@ import {
   Search,
   Sparkles,
   Command,
+  Activity,
+  AlertTriangle,
+  X as CloseIcon,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { clsx } from 'clsx';
@@ -34,7 +37,6 @@ import ActiveCallOverlay from '../components/Calls/ActiveCallOverlay';
 import NotificationBellButton from '../components/NotificationBellButton';
 import { useNotificationStore } from '../store/useNotificationStore';
 import { useSubscriptionStore } from '../store/useSubscriptionStore';
-import { AlertTriangle, X as CloseIcon } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import CommandPaletteModal from '../components/CommandPaletteModal';
@@ -43,10 +45,10 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-// Organized Navigation Categorization: structured by functional domain
+// Organized Navigation Categorization: 5 clear, functional domains
 const NAV_SECTIONS = [
   {
-    id: 'core',
+    id: 'overview',
     label: 'Overview',
     items: [
       { key: 'layout_home', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
@@ -63,19 +65,19 @@ const NAV_SECTIONS = [
         icon: Bot,
         path: '/ai-receptionist',
         badge: 'Master',
-        badgeClass: 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-xs',
-      },
-      {
-        key: 'layout_ai_calling',
-        label: 'AI Calls & Audio',
-        icon: PhoneCall,
-        path: '/calls',
+        badgeClass: 'bg-purple-900/80 text-purple-200 border border-purple-500/30',
       },
       {
         key: 'layout_voice_conv',
         label: 'Spoken Voice Agent',
         icon: Mic,
         path: '/voice-conversation',
+      },
+      {
+        key: 'layout_ai_calling',
+        label: 'Calls & Audio Logs',
+        icon: PhoneCall,
+        path: '/calls',
       },
     ],
   },
@@ -88,7 +90,7 @@ const NAV_SECTIONS = [
         label: 'Unified Inbox',
         icon: MessageSquare,
         path: '/conversations',
-        badge: 'SMS + Social',
+        badge: 'Live',
         badgeClass: 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30',
       },
       {
@@ -107,19 +109,13 @@ const NAV_SECTIONS = [
   },
   {
     id: 'crm_ops',
-    label: 'CRM & Client Ops',
+    label: 'Client & Business Ops',
     items: [
       {
         key: 'layout_contacts',
         label: 'Contacts CRM',
         icon: Contact,
         path: '/contacts',
-      },
-      {
-        key: 'layout_groups',
-        label: 'Groups & Audiences',
-        icon: Users2,
-        path: '/groups',
       },
       {
         key: 'layout_calendar',
@@ -138,6 +134,12 @@ const NAV_SECTIONS = [
         label: 'Invoices & Billing',
         icon: ReceiptText,
         path: '/invoices',
+      },
+      {
+        key: 'layout_groups',
+        label: 'Audience Groups',
+        icon: Users2,
+        path: '/groups',
       },
     ],
   },
@@ -168,17 +170,9 @@ const NAV_SECTIONS = [
   },
 ];
 
-// Flat fallback mapping for top header page title resolution
 const allNavItems = NAV_SECTIONS.flatMap((s) => s.items);
 
-// Team Management dashboard is a separate app (madbel-dashboard) shared with
-// Owner/Manager only - Admin/Super Admin use their own dedicated dashboard login.
 const TEAM_DASHBOARD_ROLES = new Set(['owner', 'manager']);
-// VITE_DASHBOARD_URL was never actually configured in the production build (only
-// documented in .env.example, never set for the live deploy), so this always fell
-// through to the localhost dev fallback — the "Owner/Manager Dashboard" button opened
-// an unreachable localhost tab for every real visitor. Falls back to the real
-// production URL now instead. Strip any trailing slash so `${...}/sso` never doubles up.
 const TEAM_DASHBOARD_URL = (import.meta.env.VITE_DASHBOARD_URL || 'https://owner.gocustify.com').replace(/\/+$/, '');
 
 function CallOverlayHost() {
@@ -241,14 +235,10 @@ export default function MainLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  // The sidebar is a fixed overlay on mobile (see the <aside> below) - close it
-  // whenever the route changes, so a nav tap doesn't leave the drawer open on
-  // top of the page it just navigated to.
   useEffect(() => {
     setMobileNavOpen(false);
   }, [location.pathname]);
 
-  // Global Ctrl+K / Cmd+K shortcut to open command palette
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -269,11 +259,6 @@ export default function MainLayout() {
   const userIsAdmin = ['super_admin', 'admin'].includes(user?.role || user?.primary_role);
 
   const openTeamDashboard = () => {
-    // Regression for W03: the store's `token` is only set at login and never
-    // updated by client.js's silent refresh (which writes straight to
-    // localStorage), so it goes stale the moment the access token is refreshed -
-    // SSO would then hand the dashboard an already-expired token. localStorage
-    // is the one place both login and refresh actually keep current.
     const currentToken = localStorage.getItem('access_token');
     const ssoUrl = currentToken
       ? `${TEAM_DASHBOARD_URL}/sso?token=${encodeURIComponent(currentToken)}`
@@ -282,11 +267,8 @@ export default function MainLayout() {
   };
 
   const path = location.pathname;
-  
-  // Determine if we are on a primary page or a sub-page
   const isPrimaryPage = ['/dashboard', '/conversations', '/voice-conversation', '/calls', '/contacts', '/documents', '/groups', '/profile'].includes(path);
 
-  // Map sub-page paths to friendly titles
   const getSubPageTitle = () => {
     switch (path) {
       case '/contacts': return t('subpage_contacts_directory');
@@ -309,116 +291,116 @@ export default function MainLayout() {
 
   return (
     <TelnyxVoiceProvider>
-    <div className="flex h-screen bg-[#02080B] text-white font-sans overflow-hidden">
-      <CallOverlayHost />
-      <CommandPaletteModal isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
-      
-      {/* Mobile backdrop - closes the drawer on outside tap */}
-      {mobileNavOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
-          onClick={() => setMobileNavOpen(false)}
-        />
-      )}
+      <div className="flex h-screen bg-[#090D16] text-slate-100 font-sans overflow-hidden">
+        <CallOverlayHost />
+        <CommandPaletteModal isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
 
-      {/* Sidebar - structured with categorized sections */}
-      <aside
-        className={cn(
-          "w-64 bg-[#0c101b] border-r border-[#243041] flex flex-col shrink-0 select-none",
-          "fixed inset-y-0 left-0 z-40 transition-transform duration-200 lg:static lg:translate-x-0",
-          mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+        {/* Mobile backdrop */}
+        {mobileNavOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm lg:hidden transition-opacity"
+            onClick={() => setMobileNavOpen(false)}
+          />
         )}
-      >
 
-        {/* Brand Logo Header */}
-        <div className="p-5 border-b border-[#243041]/40">
-          <div className="flex items-center gap-3">
-            <img 
-              src={logoImg} 
-              alt="GoCustify logo" 
-              className="w-9 h-9 rounded-full object-contain drop-shadow-[0_0_15px_rgba(17,199,229,0.2)]" 
-            />
-            <div className="text-left">
-              <h1 className="text-sm font-black text-white tracking-tight leading-none uppercase">
-                GoCustify
-              </h1>
-              <p className="text-[7.5px] font-bold text-[#9333ea]/80 tracking-[0.2em] uppercase mt-1">
-                {t('layout_tagline')}
-              </p>
+        {/* Sidebar Navigation */}
+        <aside
+          className={cn(
+            "w-64 bg-[#0C121E] border-r border-[#1B273A] flex flex-col shrink-0 select-none",
+            "fixed inset-y-0 left-0 z-40 transition-transform duration-200 lg:static lg:translate-x-0 shadow-2xl",
+            mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          {/* Brand Logo Header */}
+          <div className="p-4 border-b border-[#1B273A] bg-gradient-to-b from-[#111A2C]/60 to-transparent">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <img
+                  src={logoImg}
+                  alt="GoCustify logo"
+                  className="w-9 h-9 rounded-xl object-contain drop-shadow-[0_0_12px_rgba(139,92,246,0.35)]"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#0C121E]" />
+              </div>
+              <div className="text-left">
+                <h1 className="text-sm font-black text-white tracking-tight leading-none uppercase">
+                  GoCustify
+                </h1>
+                <p className="text-[8px] font-bold text-purple-400/90 tracking-[0.2em] uppercase mt-1">
+                  {t('layout_tagline') || 'AI CRM Platform'}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Sidebar Nav Links - Organised by Domain */}
-        <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
-          {NAV_SECTIONS.map((section) => {
-            const visibleItems = section.items.filter((item) => !item.adminOnly || userIsAdmin);
-            if (visibleItems.length === 0) return null;
+          {/* Sidebar Nav Links */}
+          <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto custom-scrollbar">
+            {NAV_SECTIONS.map((section) => {
+              const visibleItems = section.items.filter((item) => !item.adminOnly || userIsAdmin);
+              if (visibleItems.length === 0) return null;
 
-            return (
-              <div key={section.id} className="space-y-1">
-                <div className="px-3 pb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <span>{section.label}</span>
-                  {section.tag && (
-                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950/80 text-purple-300 font-bold border border-purple-500/30">
-                      {section.tag}
-                    </span>
-                  )}
+              return (
+                <div key={section.id} className="space-y-1">
+                  <div className="px-3 pb-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                    <span>{section.label}</span>
+                    {section.tag && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-950 text-purple-300 font-bold border border-purple-500/30">
+                        {section.tag}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-0.5">
+                    {visibleItems.map((item) => (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        className={({ isActive }) => cn(
+                          "group flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-200 border font-medium text-xs text-left",
+                          isActive
+                            ? "bg-gradient-to-r from-purple-500/20 via-indigo-500/10 to-transparent border-l-2 border-purple-400 text-white font-bold shadow-xs border-r-transparent border-t-transparent border-b-transparent"
+                            : "border-transparent text-slate-400 hover:bg-[#152033] hover:text-slate-100"
+                        )}
+                      >
+                        {({ isActive }) => (
+                          <>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <item.icon
+                                size={16}
+                                className={cn(
+                                  "transition-all shrink-0",
+                                  isActive ? "text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.4)]" : "text-slate-400 group-hover:text-slate-200"
+                                )}
+                              />
+                              <span className="truncate">{t(item.key) !== item.key ? t(item.key) : item.label}</span>
+                            </div>
+                            {item.badge && (
+                              <span className={cn(
+                                "text-[9px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shrink-0",
+                                item.badgeClass || "bg-purple-900/60 text-purple-300 border border-purple-500/20"
+                              )}>
+                                {item.badge}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </NavLink>
+                    ))}
+                  </div>
                 </div>
+              );
+            })}
+          </nav>
 
-                <div className="space-y-0.5">
-                  {visibleItems.map((item) => (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      className={({ isActive }) => cn(
-                        "group flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-200 border border-transparent font-semibold text-xs text-left",
-                        isActive 
-                          ? "bg-[#17324A] text-white border-[#3B82F6]/30 shadow-[inset_1px_1px_2px_rgba(59,130,246,0.1)]" 
-                          : "text-[#A4B0B7] hover:bg-slate-900/50 hover:text-white"
-                      )}
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <div className="flex items-center gap-3 min-w-0">
-                            <item.icon 
-                              size={16} 
-                              className={cn(
-                                "transition-colors shrink-0", 
-                                isActive ? "text-[#60A5FA]" : "text-[#A4B0B7] group-hover:text-slate-200"
-                              )} 
-                            />
-                            <span className="truncate">{t(item.key) !== item.key ? t(item.key) : item.label}</span>
-                          </div>
-                          {item.badge && (
-                            <span className={cn(
-                              "text-[9px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shrink-0",
-                              item.badgeClass || "bg-purple-900/60 text-purple-300 border border-purple-500/20"
-                            )}>
-                              {item.badge}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </NavLink>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </nav>
-
-        {/* Sidebar Footer */}
-        <div className="p-4 border-t border-[#243041]/40 space-y-3">
-          {/* Team Dashboard, Support and Logout */}
-          <div className="space-y-1">
+          {/* Sidebar Footer */}
+          <div className="p-3 border-t border-[#1B273A] bg-[#0A0F1A] space-y-1">
             {showTeamDashboardLink && (
               <button
                 type="button"
                 onClick={openTeamDashboard}
-                className="flex items-center gap-3.5 px-4 py-2.5 w-full rounded-xl text-xs font-bold text-[#A4B0B7] hover:bg-slate-900/40 hover:text-white transition-all text-left cursor-pointer"
+                className="flex items-center gap-3 px-3 py-2 w-full rounded-xl text-xs font-semibold text-slate-400 hover:bg-[#152033] hover:text-white transition-all text-left cursor-pointer"
               >
-                <ExternalLink size={16} />
+                <ExternalLink size={15} className="text-purple-400" />
                 <span className="capitalize">
                   {(user?.role || user?.primary_role || 'team')} Dashboard
                 </span>
@@ -426,127 +408,133 @@ export default function MainLayout() {
             )}
             <button
               onClick={logout}
-              className="flex items-center gap-3.5 px-4 py-2.5 w-full rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 transition-all text-left"
+              className="flex items-center gap-3 px-3 py-2 w-full rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 transition-all text-left cursor-pointer"
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
               <span>{t('layout_logout')}</span>
             </button>
           </div>
-        </div>
-      </aside>
+        </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        
-        {/* Top Header Bar */}
-        <header className="h-16 bg-[#0c101b]/80 backdrop-blur-md border-b border-[#243041]/40 flex items-center justify-between px-8 z-10 shrink-0">
-          
-          {/* Header Left Section */}
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setMobileNavOpen(true)}
-              aria-label="Open menu"
-              className="p-2 -ml-2 text-slate-300 hover:text-white lg:hidden"
-            >
-              <Menu size={20} />
-            </button>
-            {!isPrimaryPage ? (
-              /* If on a sub-page, show Back button */
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => navigate('/dashboard')}
-                  className="p-2 bg-slate-950 border border-slate-900 hover:border-slate-800 text-slate-400 hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center"
+        {/* Main View Area */}
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {/* Top Header Bar */}
+          <header className="h-16 bg-[#0C121E]/80 backdrop-blur-md border-b border-[#1B273A] flex items-center justify-between px-6 z-10 shrink-0">
+            {/* Header Left */}
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                aria-label="Open menu"
+                className="p-2 -ml-2 text-slate-300 hover:text-white lg:hidden"
+              >
+                <Menu size={20} />
+              </button>
+              {!isPrimaryPage ? (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => navigate('/dashboard')}
+                    className="p-2 bg-[#121A2B] border border-[#213048] hover:border-purple-500/40 text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center"
+                  >
+                    <ArrowLeft size={15} />
+                  </button>
+                  <h2 className="text-sm font-extrabold text-white tracking-wide">{getSubPageTitle()}</h2>
+                </div>
+              ) : (
+                <h2 className="text-base font-extrabold text-white tracking-tight uppercase">
+                  {path === '/dashboard' ? t('layout_dashboard_title') : (allNavItems.find(i => i.path === path)?.label || 'GoCustify')}
+                </h2>
+              )}
+            </div>
+
+            {/* Header Center - Quick Feature Finder & Live Badge */}
+            <div className="flex items-center gap-3">
+              <div
+                onClick={() => navigate('/ai-receptionist')}
+                className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-semibold cursor-pointer hover:bg-emerald-900/30 transition-colors shadow-xs"
+                title="AI Receptionist is active"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                <span>AI Receptionist Online</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCommandPaletteOpen(true)}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#10192A] hover:bg-[#16233B] border border-[#21324E] hover:border-purple-500/50 text-xs text-slate-400 hover:text-slate-200 transition-all cursor-pointer shadow-inner group"
+              >
+                <Search size={14} className="text-purple-400 group-hover:scale-110 transition-transform" />
+                <span className="font-medium">Quick find feature...</span>
+                <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700/60 text-[10px] text-purple-300 font-mono font-bold">⌘K</kbd>
+              </button>
+            </div>
+
+            {/* Header Right */}
+            <div className="flex items-center gap-4">
+              <LanguageSwitcher />
+
+              <NotificationBellButton
+                count={unreadCount}
+                active={path === '/notifications'}
+                onClick={() => navigate('/notifications')}
+                size={22}
+                strokeWidth={2.5}
+                buttonClassName="hover:text-white transition-colors relative cursor-pointer"
+                className={cn(path === '/notifications' ? 'text-purple-400' : 'text-slate-300')}
+              />
+
+              <div
+                onClick={() => navigate('/profile')}
+                className="flex items-center gap-2.5 cursor-pointer group"
+                title="Account Profile"
+              >
+                <div className="w-8 h-8 rounded-full bg-purple-950/80 border border-purple-500/40 flex items-center justify-center text-purple-300 font-black overflow-hidden shadow-inner group-hover:border-purple-400 transition-colors">
+                  {user?.full_name?.[0]?.toUpperCase() || 'U'}
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {lockNotice ? (
+            <div className="flex items-center justify-between gap-4 border-b border-amber-500/20 bg-amber-950/30 px-6 py-3 text-sm text-amber-200 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle size={16} className="shrink-0 text-amber-400" />
+                <span>
+                  {lockNotice.message ||
+                    (lockNotice.code === 'PLAN_UPGRADE_REQUIRED'
+                      ? 'This feature needs a higher plan.'
+                      : 'Your subscription has expired.')}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate('/profile?tab=support')}
+                  className="cursor-pointer rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 font-bold text-amber-100 transition-colors hover:bg-amber-500/20"
                 >
-                  <ArrowLeft size={15} />
+                  {lockNotice.code === 'PLAN_UPGRADE_REQUIRED' ? 'Upgrade' : 'Renew'}
                 </button>
-                <h2 className="text-sm font-extrabold text-white tracking-wide">{getSubPageTitle()}</h2>
-              </div>
-            ) : (
-              /* If on a primary page, show simple title */
-              <h2 className="text-base font-extrabold text-white tracking-tight uppercase">
-                {path === '/dashboard' ? t('layout_dashboard_title') : (allNavItems.find(i => i.path === path)?.label || 'GoCustify')}
-              </h2>
-            )}
-          </div>
-
-          {/* Header Center - Quick Feature Search trigger */}
-          <button
-            type="button"
-            onClick={() => setCommandPaletteOpen(true)}
-            className="hidden sm:flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-[#111927] hover:bg-[#162338] border border-[#24354f] hover:border-purple-500/50 text-xs text-slate-400 hover:text-slate-200 transition-all cursor-pointer shadow-inner"
-          >
-            <Search size={14} className="text-purple-400" />
-            <span className="font-medium">Quick find feature...</span>
-            <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700/60 text-[10px] text-slate-400 font-mono font-bold">⌘K</kbd>
-          </button>
-
-          {/* Header Right Section */}
-          <div className="flex items-center gap-6">
-
-            <LanguageSwitcher />
-
-            {/* Notification Bell */}
-            <NotificationBellButton
-              count={unreadCount}
-              active={path === '/notifications'}
-              onClick={() => navigate('/notifications')}
-              size={24}
-              strokeWidth={2.75}
-              buttonClassName="hover:text-white transition-colors relative cursor-pointer"
-              className={cn(path === '/notifications' ? 'text-[#9333ea]' : 'text-slate-200')}
-            />
-
-            {/* Profile Avatar */}
-            <div 
-              onClick={() => navigate('/profile')}
-              className="flex items-center gap-3 cursor-pointer group"
-            >
-              <div className="w-8 h-8 rounded-full bg-slate-800 border border-[#243041] flex items-center justify-center text-[#9333ea] font-black overflow-hidden shadow-inner group-hover:border-[#9333ea]/50 transition-colors">
-                {user?.full_name?.[0]?.toUpperCase() || 'U'}
+                <button
+                  type="button"
+                  onClick={clearLockNotice}
+                  className="cursor-pointer text-amber-400/70 hover:text-amber-200"
+                  aria-label="Dismiss"
+                >
+                  <CloseIcon size={16} />
+                </button>
               </div>
             </div>
-          </div>
-        </header>
+          ) : null}
 
-        {lockNotice ? (
-          <div className="flex items-center justify-between gap-4 border-b border-amber-500/20 bg-amber-950/30 px-6 py-3 text-sm text-amber-200">
-            <div className="flex items-center gap-2.5">
-              <AlertTriangle size={16} className="shrink-0 text-amber-400" />
-              <span>
-                {lockNotice.message ||
-                  (lockNotice.code === 'PLAN_UPGRADE_REQUIRED'
-                    ? 'This feature needs a higher plan.'
-                    : 'Your subscription has expired.')}
-              </span>
-            </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <button
-                type="button"
-                onClick={() => navigate('/profile?tab=support')}
-                className="cursor-pointer rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 font-bold text-amber-100 transition-colors hover:bg-amber-500/20"
-              >
-                {lockNotice.code === 'PLAN_UPGRADE_REQUIRED' ? 'Upgrade' : 'Renew'}
-              </button>
-              <button
-                type="button"
-                onClick={clearLockNotice}
-                className="cursor-pointer text-amber-400/70 hover:text-amber-200"
-                aria-label="Dismiss"
-              >
-                <CloseIcon size={16} />
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Scrollable outlet view */}
-        <main className="flex-1 overflow-y-auto p-8 bg-[#02080B] no-scrollbar">
-          <Outlet />
-        </main>
+          {/* Page Content Outlet */}
+          <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#090D16] custom-scrollbar">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
     </TelnyxVoiceProvider>
   );
 }
-

@@ -129,7 +129,7 @@ export function TelnyxVoiceProvider({ children }) {
 
     const caller = incomingCall?.callerName || incomingCall?.callerNumber || '';
     ringtoneRef.current.start();
-    titleAlertRef.current.start(caller ? `📞 ${caller}` : '📞 Incoming call');
+    titleAlertRef.current.start(caller ? `[Incoming Call] ${caller}` : '[Incoming Call] New Call');
 
     return () => {
       ringtoneRef.current?.stop();

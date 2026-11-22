@@ -219,7 +219,7 @@ function DashboardSkeleton() {
 
 function SectionCard({ children, className = '', onClick }) {
   const base =
-    'bg-[#131A24] border border-[#243041] rounded-[26px] p-5 md:p-6 text-left shadow-lg';
+    'bg-[#0F1626]/95 border border-[#1E293B] rounded-3xl p-5 md:p-6 text-left shadow-xl transition-all duration-200';
 
   if (!onClick) {
     return <div className={`${base} ${className}`}>{children}</div>;
@@ -236,7 +236,7 @@ function SectionCard({ children, className = '', onClick }) {
           onClick();
         }
       }}
-      className={`${base} ${className} cursor-pointer transition-all hover:border-[#9333ea]/40 active:scale-[0.995]`}
+      className={`${base} ${className} cursor-pointer hover:border-purple-500/40 hover:shadow-purple-900/10 active:scale-[0.995]`}
     >
       {children}
     </div>
@@ -247,42 +247,42 @@ function SectionCard({ children, className = '', onClick }) {
 const KpiMetricsRow = memo(function KpiMetricsRow({ totalChats, totalContacts, totalCalls, minutesSaved, t }) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <div className="bg-[#131A24] border border-[#243041] rounded-2xl p-4 flex items-center justify-between shadow-md">
+      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-purple-500/40 rounded-2xl p-5 flex items-center justify-between shadow-lg transition-all group">
         <div>
-          <span className="text-[11px] font-bold text-[#A4B0B7] uppercase tracking-wider block">{t('dash_kpi_conversations')}</span>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('dash_kpi_conversations')}</span>
           <span className="text-2xl font-black text-white mt-1 block">{totalChats}</span>
         </div>
-        <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+        <div className="w-11 h-11 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
           <MessageSquare size={20} />
         </div>
       </div>
 
-      <div className="bg-[#131A24] border border-[#243041] rounded-2xl p-4 flex items-center justify-between shadow-md">
+      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-indigo-500/40 rounded-2xl p-5 flex items-center justify-between shadow-lg transition-all group">
         <div>
-          <span className="text-[11px] font-bold text-[#A4B0B7] uppercase tracking-wider block">{t('dash_kpi_contacts')}</span>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('dash_kpi_contacts')}</span>
           <span className="text-2xl font-black text-white mt-1 block">{totalContacts}</span>
         </div>
-        <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+        <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
           <Users size={20} />
         </div>
       </div>
 
-      <div className="bg-[#131A24] border border-[#243041] rounded-2xl p-4 flex items-center justify-between shadow-md">
+      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-cyan-500/40 rounded-2xl p-5 flex items-center justify-between shadow-lg transition-all group">
         <div>
-          <span className="text-[11px] font-bold text-[#A4B0B7] uppercase tracking-wider block">{t('dash_kpi_ai_calls')}</span>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('dash_kpi_ai_calls')}</span>
           <span className="text-2xl font-black text-white mt-1 block">{totalCalls}</span>
         </div>
-        <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+        <div className="w-11 h-11 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
           <PhoneCall size={20} />
         </div>
       </div>
 
-      <div className="bg-[#131A24] border border-[#243041] rounded-2xl p-4 flex items-center justify-between shadow-md">
+      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-emerald-500/40 rounded-2xl p-5 flex items-center justify-between shadow-lg transition-all group">
         <div>
-          <span className="text-[11px] font-bold text-[#A4B0B7] uppercase tracking-wider block">{t('dash_kpi_minutes_saved')}</span>
-          <span className="text-2xl font-black text-[#9333ea] mt-1 block">{minutesSaved}m</span>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('dash_kpi_minutes_saved')}</span>
+          <span className="text-2xl font-black text-emerald-400 mt-1 block">{minutesSaved}m</span>
         </div>
-        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+        <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
           <Clock size={20} />
         </div>
       </div>
@@ -449,12 +449,12 @@ const DocumentsGrid = memo(function DocumentsGrid({ navigate, t }) {
             type="button"
             key={item.id}
             onClick={() => navigate(item.action.path, item.action.state ? { state: item.action.state } : undefined)}
-            className="bg-[#122437] border border-[#254669] rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-[#3B82F6]/40 active:scale-95 transition-all text-center min-h-[112px]"
+            className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-purple-500/40 hover:bg-[#151D30] rounded-2xl p-4 flex flex-col items-center justify-center gap-2.5 cursor-pointer active:scale-95 transition-all text-center min-h-[112px] group"
           >
-            <div className="w-11 h-11 rounded-2xl bg-[#13263D] flex items-center justify-center text-[#60A5FA]">
-              <item.icon size={22} />
+            <div className="w-11 h-11 rounded-2xl bg-purple-500/10 border border-purple-500/20 group-hover:border-purple-500/40 group-hover:bg-purple-500/20 flex items-center justify-center text-purple-400 transition-colors">
+              <item.icon size={20} />
             </div>
-            <span className="text-xs font-bold text-[#E9F2FF] leading-tight">{t(item.key)}</span>
+            <span className="text-xs font-bold text-[#E9F2FF] leading-tight group-hover:text-purple-200 transition-colors">{t(item.key)}</span>
           </button>
         ))}
       </div>
@@ -722,38 +722,55 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-5 pb-12 text-white">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-[30px] leading-tight font-bold tracking-tight text-[#F3F8FF]">
-          {t(greetingKey(), { name: displayName })}
-        </h1>
+    <div className="max-w-7xl mx-auto space-y-6 pb-12 text-white">
+      {/* Executive Command & Status Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 md:p-6 rounded-3xl bg-[#0F1626]/90 border border-[#1E293B] shadow-xl backdrop-blur-sm">
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+              Operations Active
+            </span>
+          </div>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+            {t(greetingKey(), { name: displayName })}
+          </h1>
+          <p className="text-xs text-slate-400 mt-1 max-w-xl leading-relaxed">
+            {t('dash_ai_subtitle') || 'Unified command center for your AI Receptionist, omnichannel communications, and business automation.'}
+          </p>
+        </div>
+
+        {/* Quick Workflow Action Strip */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          <button
+            type="button"
+            onClick={() => navigate('/ai-receptionist')}
+            className="px-3.5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <Bot size={15} />
+            <span>AI Receptionist</span>
+          </button>
+          <button
+            type="button"
+            onClick={openVoiceAssistant}
+            className="px-3.5 py-2.5 rounded-xl bg-[#1E293B] hover:bg-slate-700 text-purple-200 border border-purple-500/30 text-xs font-bold flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <Mic size={15} className="text-purple-400" />
+            <span>{t('nav_voice_agent') || 'Talk to AI'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={openBulkMessaging}
+            className="px-3.5 py-2.5 rounded-xl bg-[#1E293B] hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <Megaphone size={15} className="text-cyan-400" />
+            <span>{t('dash_bulk_messaging')}</span>
+          </button>
+        </div>
       </div>
-
-      <button
-        type="button"
-        onClick={openVoiceAssistant}
-        className="w-full bg-[#131A24] border border-[#243041] px-5 py-4 rounded-[26px] flex items-center justify-between shadow-lg hover:border-[#9333ea]/40 cursor-pointer active:scale-[0.99] transition-all text-left"
-      >
-        <div className="flex items-center gap-4">
-          <Mic size={22} className="text-[#60A5FA]" />
-          <span className="text-sm font-semibold text-[#A4B0B7]">
-            {t('dash_tap_ask_smartflow')}
-          </span>
-        </div>
-        <span className="text-xl font-bold text-[#60A5FA]">...</span>
-      </button>
-
-      <button
-        type="button"
-        onClick={openBulkMessaging}
-        className="w-full rounded-[18px] border border-[#244C7A]/60 bg-[#102033] min-h-[50px] px-5 py-3 flex items-center justify-between cursor-pointer hover:border-[#3B82F6]/40 active:scale-[0.99] transition-all text-left"
-      >
-        <div className="flex items-center gap-3">
-          <Megaphone size={18} className="text-[#60A5FA]" />
-          <span className="text-sm font-bold text-[#EAF8FF]">{t('dash_bulk_messaging')}</span>
-        </div>
-        <span className="text-xs font-bold text-[#93C5FD]">{t('dash_open')}</span>
-      </button>
 
       {/* KPI Stat Cards Summary Row */}
       <KpiMetricsRow

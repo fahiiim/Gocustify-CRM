@@ -398,8 +398,12 @@ const TeamAnalysis = () => {
                     onClick={() => navigate(`/owner/member/${m.user_id}/analysis`)}
                     className="hover:bg-cyan-50 transition-colors cursor-pointer group"
                   >
-                    <td className="px-4 py-3 text-slate-400 font-semibold">
-                      {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
+                    <td className="px-4 py-3 font-semibold">
+                      <span className={`w-5 h-5 rounded-full text-center text-[11px] font-bold inline-flex items-center justify-center ${
+                        idx === 0 ? 'bg-amber-100 text-amber-700' : idx === 1 ? 'bg-slate-200 text-slate-700' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'text-slate-400'
+                      }`}>
+                        {idx + 1}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

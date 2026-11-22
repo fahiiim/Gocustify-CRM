@@ -45,6 +45,10 @@ import {
   Loader2,
   Search,
   Filter,
+  Stethoscope,
+  Activity,
+  Heart,
+  Briefcase,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { smartflowApi } from '../api/services';
@@ -513,17 +517,17 @@ export default function AIReceptionist() {
                   onChange={(e) => applyIndustryTemplate(e.target.value)}
                   className="bg-[#1f1f2e] text-white text-xs font-medium py-1.5 pl-3 pr-8 rounded-lg border border-[#35354e] focus:outline-none focus:border-purple-500 cursor-pointer appearance-none"
                 >
-                  <option value="Dentist (Dental Clinic)">🦷 Dentist (Dental Clinic)</option>
-                  <option value="Medical Clinic">🩺 Medical Clinic</option>
-                  <option value="Chiropractor">🦴 Chiropractor</option>
-                  <option value="Wellness Center">🌸 Wellness Center</option>
-                  <option value="Law Firm">⚖️ Law Firm</option>
-                  <option value="Home Services (Plumbing, Electrical, HVAC)">🔧 Home Services (Plumbing, HVAC)</option>
-                  <option value="Car Dealership">🚘 Car Dealership</option>
-                  <option value="Accounting / Bookkeeping Firm">📊 Accounting & Tax Firm</option>
-                  <option value="Real Estate Agency">🏢 Real Estate Agency</option>
-                  <option value="Veterinary Clinic">🐾 Veterinary Clinic</option>
-                  <option value="Other">🌐 Other / General Business</option>
+                  <option value="Dentist (Dental Clinic)">Dentist (Dental Clinic)</option>
+                  <option value="Medical Clinic">Medical Clinic</option>
+                  <option value="Chiropractor">Chiropractor</option>
+                  <option value="Wellness Center">Wellness Center</option>
+                  <option value="Law Firm">Law Firm</option>
+                  <option value="Home Services (Plumbing, Electrical, HVAC)">Home Services (Plumbing, HVAC)</option>
+                  <option value="Car Dealership">Car Dealership</option>
+                  <option value="Accounting / Bookkeeping Firm">Accounting & Tax Firm</option>
+                  <option value="Real Estate Agency">Real Estate Agency</option>
+                  <option value="Veterinary Clinic">Veterinary Clinic</option>
+                  <option value="Other">Other / General Business</option>
                 </select>
                 <ChevronDown className="h-3.5 w-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
               </div>
@@ -608,7 +612,7 @@ export default function AIReceptionist() {
                       <h3 className="font-semibold text-sm text-white">Business & Voice Setup</h3>
                     </div>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                      ✓ Configured
+                      <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mb-4">Basic business info and AI voice.</p>
@@ -658,7 +662,7 @@ export default function AIReceptionist() {
                       <h3 className="font-semibold text-sm text-white">Inbound Call Script</h3>
                     </div>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                      ✓ Configured
+                      <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mb-3">How the AI answers incoming calls.</p>
@@ -696,7 +700,7 @@ export default function AIReceptionist() {
                       <h3 className="font-semibold text-sm text-white">Outbound Call Script</h3>
                     </div>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                      ✓ Configured
+                      <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mb-3">For follow-ups, reminders, and outreach.</p>
@@ -731,7 +735,7 @@ export default function AIReceptionist() {
                       <h3 className="font-semibold text-sm text-white">Business Knowledge</h3>
                     </div>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                      ✓ Configured
+                      <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mb-3">Key information the AI uses to answer questions.</p>
@@ -781,7 +785,7 @@ export default function AIReceptionist() {
                     <h3 className="font-semibold text-sm text-white">Services / Appointment Types</h3>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                    ✓ Configured
+                    <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mb-3">Services, duration, staff, and booking rules.</p>
@@ -837,7 +841,7 @@ export default function AIReceptionist() {
                     <h3 className="font-semibold text-sm text-white">Staff / Teams</h3>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                    ✓ Configured
+                    <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mb-3">People and teams the AI can route to or schedule with.</p>
@@ -1080,7 +1084,7 @@ export default function AIReceptionist() {
                   <h3 className="font-semibold text-sm text-white">Routing & Call Handling</h3>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                  ✓ Configured
+                  <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                 </span>
               </div>
               <p className="text-xs text-slate-400 mb-3">Where to send calls and how to handle them.</p>
@@ -1098,7 +1102,7 @@ export default function AIReceptionist() {
                       <span>{route.intent}</span>
                     </div>
                     <div className="flex items-center gap-2 text-slate-400">
-                      <span>➔</span>
+                      <ArrowRight size={13} className="text-purple-400" />
                       <span className="text-purple-300 font-medium">{route.destination}</span>
                     </div>
                   </div>
@@ -1114,7 +1118,7 @@ export default function AIReceptionist() {
                   <h3 className="font-semibold text-sm text-white">Permissions (What the AI Can Do)</h3>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                  ✓ Configured
+                  <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                 </span>
               </div>
               <p className="text-xs text-slate-400 mb-4">Control the specific capabilities the AI receptionist can perform.</p>
@@ -1155,7 +1159,7 @@ export default function AIReceptionist() {
                   <h3 className="font-semibold text-sm text-white">Intents & Phrases</h3>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                  ✓ Configured
+                  <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                 </span>
               </div>
               <p className="text-xs text-slate-400 mb-3">Customize or add new intents and trigger phrases.</p>
@@ -1237,7 +1241,7 @@ export default function AIReceptionist() {
                       <h3 className="font-semibold text-sm text-white">After-Hours & Emergency</h3>
                     </div>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                      ✓ Configured
+                      <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mb-3">Set after-hours behavior and emergency escalation.</p>
@@ -1275,7 +1279,7 @@ export default function AIReceptionist() {
                       <h3 className="font-semibold text-sm text-white">Secure Payments</h3>
                     </div>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                      ✓ Configured
+                      <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mb-3">Handle payments safely (no raw card numbers over phone).</p>
@@ -1325,7 +1329,7 @@ export default function AIReceptionist() {
                     <h3 className="font-semibold text-sm text-white">Recording & Transcription</h3>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                    ✓ Configured
+                    <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mb-3">Call recording and transcription settings.</p>
@@ -1368,7 +1372,7 @@ export default function AIReceptionist() {
                     <h3 className="font-semibold text-sm text-white">Consent & Outbound Calling</h3>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                    ✓ Configured
+                    <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mb-3">Manage consent, outbound calls, and TCPA compliance.</p>
@@ -1407,7 +1411,7 @@ export default function AIReceptionist() {
                   <h3 className="font-semibold text-sm text-white">CRM & Lead Behavior</h3>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                  ✓ Configured
+                  <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                 </span>
               </div>
               <p className="text-xs text-slate-400 mb-3">How calls create and update customer records.</p>
@@ -1649,37 +1653,42 @@ export default function AIReceptionist() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 {[
-                  { key: 'Dentist (Dental Clinic)', name: 'Dentist (Dental Clinic)', icon: '🦷', desc: 'Preloads dental cleaning, exam, implant, and insurance verification (Delta, Aetna).' },
-                  { key: 'Medical Clinic', name: 'Medical Clinic', icon: '🩺', desc: 'Preloads physical exams, prescription requests, triage, and Medicare/UHC insurance.' },
-                  { key: 'Chiropractor', name: 'Chiropractor Clinic', icon: '🦴', desc: 'Preloads spinal adjustments, new patient exam fees, and auto accident / PI intake.' },
-                  { key: 'Wellness Center', name: 'Wellness Center', icon: '🌸', desc: 'Preloads IV hydration, cryotherapy, infrared sauna, massage, and contraindication screening.' },
-                  { key: 'Law Firm', name: 'Law Firm', icon: '⚖️', desc: 'Preloads personal injury intake, consultations, conflict check, and attorney routing.' },
-                  { key: 'Home Services (Plumbing, Electrical, HVAC)', name: 'Home Services', icon: '🔧', desc: 'Preloads emergency dispatch, diagnostic fees, service area radius, and trade techs.' },
-                  { key: 'Car Dealership', name: 'Car Dealership', icon: '🚘', desc: 'Preloads vehicle inventory search, test drive scheduling, trade-in valuations, and service bay.' },
-                  { key: 'Accounting / Bookkeeping Firm', name: 'Accounting & Tax Firm', icon: '📊', desc: 'Preloads tax return preparation, bookkeeping, IRS notices, and secure upload link.' },
-                  { key: 'Real Estate Agency', name: 'Real Estate Agency', icon: '🏢', desc: 'Preloads property showings, buyer pre-qualifications, CMA home valuations, and open houses.' },
-                  { key: 'Veterinary Clinic', name: 'Veterinary Clinic', icon: '🐾', desc: 'Preloads pet wellness exams, vaccinations, Trupanion pet insurance, and emergency triage.' },
-                  { key: 'Other', name: 'General Business', icon: '🌐', desc: 'Universal master template with appointment booking, lead capture, and FAQs.' },
-                ].map((tmpl) => (
-                  <button
-                    key={tmpl.key}
-                    onClick={() => {
-                      applyIndustryTemplate(tmpl.key, null, false);
-                      setTemplateModalOpen(false);
-                    }}
-                    className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
-                      selectedIndustry === tmpl.key
-                        ? 'bg-purple-950/40 border-purple-500 shadow-md shadow-purple-900/20'
-                        : 'bg-[#1a1a29] border-[#29293e] hover:border-[#3d3d5c] hover:bg-[#202033]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-base">{tmpl.icon}</span>
-                      <span className="font-semibold text-white text-xs">{tmpl.name}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 leading-relaxed">{tmpl.desc}</p>
-                  </button>
-                ))}
+                  { key: 'Dentist (Dental Clinic)', name: 'Dentist (Dental Clinic)', icon: Bot, desc: 'Preloads dental cleaning, exam, implant, and insurance verification (Delta, Aetna).' },
+                  { key: 'Medical Clinic', name: 'Medical Clinic', icon: Stethoscope, desc: 'Preloads physical exams, prescription requests, triage, and Medicare/UHC insurance.' },
+                  { key: 'Chiropractor', name: 'Chiropractor Clinic', icon: Activity, desc: 'Preloads spinal adjustments, new patient exam fees, and auto accident / PI intake.' },
+                  { key: 'Wellness Center', name: 'Wellness Center', icon: Sparkles, desc: 'Preloads IV hydration, cryotherapy, infrared sauna, massage, and contraindication screening.' },
+                  { key: 'Law Firm', name: 'Law Firm', icon: Scale, desc: 'Preloads personal injury intake, consultations, conflict check, and attorney routing.' },
+                  { key: 'Home Services (Plumbing, Electrical, HVAC)', name: 'Home Services', icon: Wrench, desc: 'Preloads emergency dispatch, diagnostic fees, service area radius, and trade techs.' },
+                  { key: 'Car Dealership', name: 'Car Dealership', icon: Car, desc: 'Preloads vehicle inventory search, test drive scheduling, trade-in valuations, and service bay.' },
+                  { key: 'Accounting / Bookkeeping Firm', name: 'Accounting & Tax Firm', icon: FileText, desc: 'Preloads tax return preparation, bookkeeping, IRS notices, and secure upload link.' },
+                  { key: 'Real Estate Agency', name: 'Real Estate Agency', icon: Building, desc: 'Preloads property showings, buyer pre-qualifications, CMA home valuations, and open houses.' },
+                  { key: 'Veterinary Clinic', name: 'Veterinary Clinic', icon: Heart, desc: 'Preloads pet wellness exams, vaccinations, Trupanion pet insurance, and emergency triage.' },
+                  { key: 'Other', name: 'General Business', icon: Briefcase, desc: 'Universal master template with appointment booking, lead capture, and FAQs.' },
+                ].map((tmpl) => {
+                  const Icon = tmpl.icon;
+                  return (
+                    <button
+                      key={tmpl.key}
+                      onClick={() => {
+                        applyIndustryTemplate(tmpl.key, null, false);
+                        setTemplateModalOpen(false);
+                      }}
+                      className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                        selectedIndustry === tmpl.key
+                          ? 'bg-purple-950/40 border-purple-500 shadow-md shadow-purple-900/20'
+                          : 'bg-[#1a1a29] border-[#29293e] hover:border-[#3d3d5c] hover:bg-[#202033]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className="w-6 h-6 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+                          <Icon size={14} />
+                        </div>
+                        <span className="font-semibold text-white text-xs">{tmpl.name}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">{tmpl.desc}</p>
+                    </button>
+                  );
+                })}
               </div>
             </motion.div>
           </div>

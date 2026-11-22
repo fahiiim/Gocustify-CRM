@@ -652,7 +652,7 @@ export default function Landing() {
                 key={pain}
                 className="px-4 sm:px-5 py-2 border border-rose-500/20 bg-rose-950/10 text-rose-400 rounded-full text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-lg shadow-rose-950/5 cursor-default hover:border-rose-500/35 transition-colors"
               >
-                <span className="text-rose-500">✕</span> {pain}
+                <X size={14} className="text-rose-500 shrink-0" /> {pain}
               </span>
             ))}
           </div>

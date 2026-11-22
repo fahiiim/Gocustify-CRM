@@ -470,7 +470,7 @@ function CallRow({ item, onAnalyze, onDirectCall, onRequestCallback, onDownloadR
                 {callbackPending ? (
                   <Loader2 size={13} className="animate-spin" />
                 ) : item.callback_requested ? (
-                  <span>✓ {t('calls_callback_queued') || 'Queued'}</span>
+                  <span className="inline-flex items-center gap-1"><CheckCircle2 size={12} className="text-emerald-400" /> {t('calls_callback_queued') || 'Queued'}</span>
                 ) : (
                   <span>{t('calls_request_callback') || 'Queue Callback'}</span>
                 )}

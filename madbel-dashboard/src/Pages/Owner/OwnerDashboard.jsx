@@ -136,8 +136,10 @@ const OwnerView = () => {
                 to={`/owner/member/${m.user_id}/analysis`}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-cyan-50 transition-colors group"
               >
-                <span className="w-5 text-center text-xs font-bold text-slate-400">
-                  {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}
+                <span className={`w-5 h-5 rounded-full text-center text-[11px] font-bold flex items-center justify-center shrink-0 ${
+                  i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-slate-200 text-slate-700' : i === 2 ? 'bg-orange-100 text-orange-700' : 'text-slate-400'
+                }`}>
+                  {i + 1}
                 </span>
                 <div className="w-7 h-7 rounded-full bg-cyan-100 flex items-center justify-center shrink-0">
                   <UserCheck className="w-3.5 h-3.5 text-[#17b4c9]" />
