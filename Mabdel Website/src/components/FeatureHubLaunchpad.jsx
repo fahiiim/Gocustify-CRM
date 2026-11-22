@@ -231,32 +231,32 @@ export default function FeatureHubLaunchpad() {
   }, [selectedCategory, searchQuery]);
 
   return (
-    <div className="bg-[#0c121e]/90 border border-[#24354f] rounded-3xl p-6 shadow-xl space-y-5">
+    <div className="bg-[#0c121e]/90 border border-[#24354f] rounded-none p-4 md:p-5 shadow-xl space-y-4">
       {/* Header and Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#24354f]/60 pb-5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 border-b border-[#24354f]/60 pb-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-purple-950/60 border border-purple-500/30 flex items-center justify-center text-purple-400">
-              <Sparkles size={17} />
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-none bg-purple-950/60 border border-purple-500/30 flex items-center justify-center text-purple-400">
+              <Sparkles size={15} />
             </div>
-            <h2 className="text-lg font-bold text-white tracking-tight">
+            <h2 className="text-base md:text-lg font-bold text-white tracking-tight">
               Feature Hub & Quick Launchpad
             </h2>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-400 mt-0.5">
             Organized direct access to all AI, voice, messaging, CRM, and business operations.
           </p>
         </div>
 
         {/* Search input */}
-        <div className="relative min-w-[260px]">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="relative min-w-[240px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search features (e.g. AI Receptionist, SMS, Invoices)..."
-            className="w-full bg-[#101a2b] border border-[#24354f] focus:border-purple-500/60 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none transition-all"
+            className="w-full bg-[#101a2b] border border-[#24354f] focus:border-purple-500/60 rounded-none pl-8.5 pr-4 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none transition-all"
           />
           {searchQuery && (
             <button
@@ -270,9 +270,9 @@ export default function FeatureHubLaunchpad() {
       </div>
 
       {/* Category Pills */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1.5">
-          <SlidersHorizontal size={13} />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+          <SlidersHorizontal size={12} />
           Filter:
         </span>
         {CATEGORIES.map((cat) => {
@@ -285,14 +285,14 @@ export default function FeatureHubLaunchpad() {
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`px-2.5 py-1 rounded-none text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 isActive
                   ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
                   : 'bg-[#101a2b] text-slate-400 hover:bg-[#15233a] hover:text-slate-200 border border-[#24354f]'
               }`}
             >
               <span>{cat.label}</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-none font-bold ${
                 isActive ? 'bg-purple-800 text-purple-100' : 'bg-slate-800 text-slate-400'
               }`}>
                 {count}
@@ -302,8 +302,8 @@ export default function FeatureHubLaunchpad() {
         })}
       </div>
 
-      {/* Feature Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pt-1">
+      {/* Feature Grid - Full Width & Responsive */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-4 gap-3 md:gap-3.5 pt-1">
         {filteredFeatures.map((feat) => {
           const IconComponent = ICON_MAP[feat.icon] || Bot;
 
@@ -311,31 +311,31 @@ export default function FeatureHubLaunchpad() {
             <div
               key={feat.id}
               onClick={() => navigate(feat.path)}
-              className={`group bg-[#10192a] border border-[#203047] rounded-2xl p-4.5 flex flex-col justify-between transition-all duration-200 cursor-pointer ${feat.accentBorder}`}
+              className={`group bg-[#10192a] border border-[#203047] rounded-none p-3.5 sm:p-4 flex flex-col justify-between transition-all duration-200 cursor-pointer ${feat.accentBorder}`}
             >
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${feat.iconColor}`}>
-                    <IconComponent size={20} />
+                  <div className={`w-9 h-9 rounded-none border flex items-center justify-center shrink-0 ${feat.iconColor}`}>
+                    <IconComponent size={18} />
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border tracking-wide uppercase ${feat.badgeColor}`}>
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-none border tracking-wide uppercase ${feat.badgeColor}`}>
                     {feat.badge}
                   </span>
                 </div>
 
-                <h3 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors mt-3">
+                <h3 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors mt-2.5">
                   {feat.title}
                 </h3>
-                <p className="text-xs text-slate-400 mt-1.5 leading-relaxed line-clamp-3">
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed line-clamp-2">
                   {feat.description}
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-[#1d2b3f] flex items-center justify-between text-xs font-semibold text-slate-300 group-hover:text-white">
+              <div className="mt-3 pt-2.5 border-t border-[#1d2b3f] flex items-center justify-between text-xs font-semibold text-slate-300 group-hover:text-white">
                 <span className="text-[11px] text-purple-400 font-bold tracking-tight">
                   {feat.actionText}
                 </span>
-                <ArrowRight size={14} className="text-slate-400 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
+                <ArrowRight size={13} className="text-slate-400 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
               </div>
             </div>
           );

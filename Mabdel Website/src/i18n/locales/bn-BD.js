@@ -1997,4 +1997,8 @@ export default {
     layout_unified_conversation: "একীভূত কথোপকথন",
     layout_calendar: "ক্যালেন্ডার",
 
+    dash_ai_subtitle: "Unified command center for your AI Receptionist, omnichannel communications, and business automation.",
+    nav_voice_agent: "Talk to AI",
+    dash_operations_active: "Operations Active",
+    dash_receptionist_online: "AI Receptionist Online",
 };

@@ -38,6 +38,7 @@ body {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0 !important;
 }
 
 .glass-glow {
@@ -46,13 +47,14 @@ body {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(139, 92, 246, 0.2);
   box-shadow: 0 8px 32px -4px rgba(139, 92, 246, 0.12);
+  border-radius: 0 !important;
 }
 
 .m-card {
   background: #0f1523;
   border: 1px solid #1e293b;
-  border-radius: 16px;
-  padding: 1.5rem;
+  border-radius: 0 !important;
+  padding: 1.25rem;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -60,6 +62,16 @@ body {
   border-color: rgba(139, 92, 246, 0.4);
   transform: translateY(-2px);
   box-shadow: 0 12px 30px -6px rgba(139, 92, 246, 0.18);
+}
+
+/* Zero corner roundness rule for all cards, panels, widgets, and sections */
+.card,
+.section-card,
+[class*="rounded-3xl"],
+[class*="rounded-2xl"],
+[class*="rounded-[26px]"],
+[class*="rounded-[28px]"] {
+  border-radius: 0 !important;
 }
 
 /* Scrollbar hiding utilities */

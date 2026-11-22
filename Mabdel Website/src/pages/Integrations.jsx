@@ -705,7 +705,7 @@ export default function Integrations() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#020406] max-w-3xl mx-auto w-full">
+    <div className="flex flex-col h-full bg-[#020406] w-full">
       <div className="flex items-center justify-between py-2 mb-3">
         <button
           type="button"

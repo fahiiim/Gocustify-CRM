@@ -191,35 +191,35 @@ const AvatarStack = memo(function AvatarStack({ avatars, countText, size = 36, o
 
 function DashboardSkeleton() {
   return (
-    <div className="max-w-7xl mx-auto space-y-5 pb-12 animate-pulse text-white">
-      <div className="h-10 w-72 rounded-2xl bg-[#131A24]" />
-      <div className="h-16 rounded-[26px] bg-[#131A24]" />
-      <div className="h-14 rounded-[18px] bg-[#131A24]" />
+    <div className="w-full space-y-4 pb-8 animate-pulse text-white">
+      <div className="h-10 w-72 rounded-none bg-[#131A24]" />
+      <div className="h-16 rounded-none bg-[#131A24]" />
+      <div className="h-14 rounded-none bg-[#131A24]" />
       
       {/* KPI skeleton */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-24 rounded-2xl bg-[#131A24]" />
+          <div key={i} className="h-24 rounded-none bg-[#131A24]" />
         ))}
       </div>
 
-      <div className="h-48 rounded-[26px] bg-[#131A24]" />
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-5">
-        <div className="h-64 rounded-[26px] bg-[#131A24]" />
-        <div className="space-y-5">
-          <div className="h-36 rounded-[26px] bg-[#131A24]" />
-          <div className="h-24 rounded-[26px] bg-[#131A24]" />
+      <div className="h-48 rounded-none bg-[#131A24]" />
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-4">
+        <div className="h-64 rounded-none bg-[#131A24]" />
+        <div className="space-y-4">
+          <div className="h-36 rounded-none bg-[#131A24]" />
+          <div className="h-24 rounded-none bg-[#131A24]" />
         </div>
       </div>
-      <div className="h-44 rounded-[26px] bg-[#131A24]" />
-      <div className="h-72 rounded-[26px] bg-[#131A24]" />
+      <div className="h-44 rounded-none bg-[#131A24]" />
+      <div className="h-72 rounded-none bg-[#131A24]" />
     </div>
   );
 }
 
 function SectionCard({ children, className = '', onClick }) {
   const base =
-    'bg-[#0F1626]/95 border border-[#1E293B] rounded-3xl p-5 md:p-6 text-left shadow-xl transition-all duration-200';
+    'bg-[#0F1626]/95 border border-[#1E293B] rounded-none p-4 md:p-5 text-left shadow-xl transition-all duration-200';
 
   if (!onClick) {
     return <div className={`${base} ${className}`}>{children}</div>;
@@ -246,44 +246,44 @@ function SectionCard({ children, className = '', onClick }) {
 /* Memoized sub-components to eliminate unnecessary re-renders */
 const KpiMetricsRow = memo(function KpiMetricsRow({ totalChats, totalContacts, totalCalls, minutesSaved, t }) {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-purple-500/40 rounded-2xl p-5 flex items-center justify-between shadow-lg transition-all group">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-purple-500/40 rounded-none p-4 md:p-5 flex items-center justify-between shadow-lg transition-all group">
         <div>
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('dash_kpi_conversations')}</span>
           <span className="text-2xl font-black text-white mt-1 block">{totalChats}</span>
         </div>
-        <div className="w-11 h-11 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
-          <MessageSquare size={20} />
+        <div className="w-10 h-10 rounded-none bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
+          <MessageSquare size={19} />
         </div>
       </div>
 
-      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-indigo-500/40 rounded-2xl p-5 flex items-center justify-between shadow-lg transition-all group">
+      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-indigo-500/40 rounded-none p-4 md:p-5 flex items-center justify-between shadow-lg transition-all group">
         <div>
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('dash_kpi_contacts')}</span>
           <span className="text-2xl font-black text-white mt-1 block">{totalContacts}</span>
         </div>
-        <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
-          <Users size={20} />
+        <div className="w-10 h-10 rounded-none bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
+          <Users size={19} />
         </div>
       </div>
 
-      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-cyan-500/40 rounded-2xl p-5 flex items-center justify-between shadow-lg transition-all group">
+      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-cyan-500/40 rounded-none p-4 md:p-5 flex items-center justify-between shadow-lg transition-all group">
         <div>
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('dash_kpi_ai_calls')}</span>
           <span className="text-2xl font-black text-white mt-1 block">{totalCalls}</span>
         </div>
-        <div className="w-11 h-11 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
-          <PhoneCall size={20} />
+        <div className="w-10 h-10 rounded-none bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+          <PhoneCall size={19} />
         </div>
       </div>
 
-      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-emerald-500/40 rounded-2xl p-5 flex items-center justify-between shadow-lg transition-all group">
+      <div className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-emerald-500/40 rounded-none p-4 md:p-5 flex items-center justify-between shadow-lg transition-all group">
         <div>
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('dash_kpi_minutes_saved')}</span>
           <span className="text-2xl font-black text-emerald-400 mt-1 block">{minutesSaved}m</span>
         </div>
-        <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
-          <Clock size={20} />
+        <div className="w-10 h-10 rounded-none bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+          <Clock size={19} />
         </div>
       </div>
     </div>
@@ -443,16 +443,16 @@ const DocumentsGrid = memo(function DocumentsGrid({ navigate, t }) {
   return (
     <SectionCard>
       <h3 className="text-xl font-bold text-white">{t('dash_documents')}</h3>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
         {HOME_DOC_ITEM_DEFS.map((item) => (
           <button
             type="button"
             key={item.id}
             onClick={() => navigate(item.action.path, item.action.state ? { state: item.action.state } : undefined)}
-            className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-purple-500/40 hover:bg-[#151D30] rounded-2xl p-4 flex flex-col items-center justify-center gap-2.5 cursor-pointer active:scale-95 transition-all text-center min-h-[112px] group"
+            className="bg-[#0F1626]/90 border border-[#1E293B] hover:border-purple-500/40 hover:bg-[#151D30] rounded-none p-3.5 flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all text-center min-h-[96px] group"
           >
-            <div className="w-11 h-11 rounded-2xl bg-purple-500/10 border border-purple-500/20 group-hover:border-purple-500/40 group-hover:bg-purple-500/20 flex items-center justify-center text-purple-400 transition-colors">
-              <item.icon size={20} />
+            <div className="w-10 h-10 rounded-none bg-purple-500/10 border border-purple-500/20 group-hover:border-purple-500/40 group-hover:bg-purple-500/20 flex items-center justify-center text-purple-400 transition-colors">
+              <item.icon size={19} />
             </div>
             <span className="text-xs font-bold text-[#E9F2FF] leading-tight group-hover:text-purple-200 transition-colors">{t(item.key)}</span>
           </button>
@@ -472,37 +472,37 @@ const AiCallAnalyticsCard = memo(function AiCallAnalyticsCard({
   return (
     <SectionCard onClick={openCallHistory}>
       <div className="flex items-center gap-2">
-        <PhoneCall size={21} className="text-[#12D2ED]" />
+        <PhoneCall size={20} className="text-[#12D2ED]" />
         <h3 className="text-xl font-bold text-white tracking-tight">{t('dash_ai_call_analytics')}</h3>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
-        <div className="bg-[#0A1019] border border-[#243246] rounded-2xl p-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mt-4">
+        <div className="bg-[#0A1019] border border-[#243246] rounded-none p-4">
           <span className="text-[10px] font-bold text-[#CBD5E1] uppercase tracking-wider block">{t('dash_total_calls')}</span>
           <span className="text-3xl font-black text-white mt-1 block">{totalCallsCount}</span>
         </div>
-        <div className="bg-[#0A1019] border border-[#243246] rounded-2xl p-4">
+        <div className="bg-[#0A1019] border border-[#243246] rounded-none p-4">
           <span className="text-[10px] font-bold text-[#CBD5E1] uppercase tracking-wider block">{t('dash_minutes_saved')}</span>
           <span className="text-3xl font-black text-[#9333ea] mt-1 block">{minutesSavedCount}</span>
         </div>
       </div>
 
-      <div className="space-y-3 mt-5">
+      <div className="space-y-2.5 mt-4">
         {analyticsCallRows.length > 0 ? (
           analyticsCallRows.map((item) => (
-            <div key={item.id} className="bg-slate-950/30 border border-slate-900 rounded-2xl p-4 flex items-center justify-between gap-4 text-left">
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${item.status === 'missed' ? 'bg-rose-950/40 text-rose-400' : 'bg-[#0F3A48] text-[#11D1ED]'}`}>
-                  <PhoneCall size={16} />
+            <div key={item.id} className="bg-slate-950/30 border border-slate-900 rounded-none p-3.5 flex items-center justify-between gap-4 text-left">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-9 h-9 rounded-none flex items-center justify-center shrink-0 ${item.status === 'missed' ? 'bg-rose-950/40 text-rose-400' : 'bg-[#0F3A48] text-[#11D1ED]'}`}>
+                  <PhoneCall size={15} />
                 </div>
                 <div className="min-w-0">
-                  <div className="font-bold text-slate-200 truncate">{item.name}</div>
+                  <div className="font-bold text-slate-200 text-sm truncate">{item.name}</div>
                   <div className="text-[11px] text-slate-400 truncate">{item.subtitle}</div>
                 </div>
               </div>
               {item.rightType === 'badge' ? (
                 <div
-                  className={`text-[10px] font-bold rounded-full px-3 py-1 uppercase tracking-wider shrink-0 ${
+                  className={`text-[10px] font-bold px-2.5 py-0.5 uppercase tracking-wider shrink-0 ${
                     CALL_STATUS_PROBLEMS.includes(item.status) ? 'bg-rose-950/50 text-rose-300' : 'bg-[#184833] text-[#3ADF87]'
                   }`}
                 >
@@ -722,24 +722,24 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-12 text-white">
+    <div className="w-full space-y-4 md:space-y-5 pb-8 text-white">
       {/* Executive Command & Status Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 md:p-6 rounded-3xl bg-[#0F1626]/90 border border-[#1E293B] shadow-xl backdrop-blur-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 md:p-5 rounded-none bg-[#0F1626]/90 border border-[#1E293B] shadow-xl backdrop-blur-sm">
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex items-center gap-2 mb-1">
             <span className="flex h-2 w-2 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-              Operations Active
+              {t('dash_operations_active') && t('dash_operations_active') !== 'dash_operations_active' ? t('dash_operations_active') : 'Operations Active'}
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
             {t(greetingKey(), { name: displayName })}
           </h1>
-          <p className="text-xs text-slate-400 mt-1 max-w-xl leading-relaxed">
-            {t('dash_ai_subtitle') || 'Unified command center for your AI Receptionist, omnichannel communications, and business automation.'}
+          <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+            {t('dash_ai_subtitle') && t('dash_ai_subtitle') !== 'dash_ai_subtitle' ? t('dash_ai_subtitle') : 'Unified command center for your AI Receptionist, omnichannel communications, and business automation.'}
           </p>
         </div>
 
@@ -748,7 +748,7 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => navigate('/ai-receptionist')}
-            className="px-3.5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="px-3.5 py-2 rounded-none bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-purple-600/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <Bot size={15} />
             <span>AI Receptionist</span>
@@ -756,15 +756,15 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={openVoiceAssistant}
-            className="px-3.5 py-2.5 rounded-xl bg-[#1E293B] hover:bg-slate-700 text-purple-200 border border-purple-500/30 text-xs font-bold flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="px-3.5 py-2 rounded-none bg-[#1E293B] hover:bg-slate-700 text-purple-200 border border-purple-500/30 text-xs font-bold flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <Mic size={15} className="text-purple-400" />
-            <span>{t('nav_voice_agent') || 'Talk to AI'}</span>
+            <span>{t('nav_voice_agent') && t('nav_voice_agent') !== 'nav_voice_agent' ? t('nav_voice_agent') : 'Talk to AI'}</span>
           </button>
           <button
             type="button"
             onClick={openBulkMessaging}
-            className="px-3.5 py-2.5 rounded-xl bg-[#1E293B] hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="px-3.5 py-2 rounded-none bg-[#1E293B] hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <Megaphone size={15} className="text-cyan-400" />
             <span>{t('dash_bulk_messaging')}</span>

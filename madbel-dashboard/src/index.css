@@ -33,3 +33,11 @@
 .subtract-width {
   width: calc(100% - 18rem);
 }
+
+/* Zero corner roundness rule for cards, panels, and widgets */
+.card,
+[class*="rounded-3xl"],
+[class*="rounded-2xl"],
+[class*="rounded-xl"] {
+  border-radius: 0 !important;
+}

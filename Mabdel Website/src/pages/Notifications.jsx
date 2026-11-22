@@ -207,7 +207,7 @@ export default function Notifications() {
   const newCount = notifications.filter((item) => item.isNew).length;
 
   return (
-    <div className="max-w-5xl mx-auto pb-12 text-white">
+    <div className="w-full pb-12 text-white">
       <div className="flex items-center justify-between gap-4 mb-5">
         <h1 className="text-2xl font-bold tracking-tight">{t('notif_title')}</h1>
         <button

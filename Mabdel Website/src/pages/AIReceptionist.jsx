@@ -449,16 +449,16 @@ export default function AIReceptionist() {
   return (
     <div className="min-h-screen bg-[#0e0e14] text-slate-100 pb-20 selection:bg-purple-600 selection:text-white">
       {/* ── Top Header Bar ── */}
-      <header className="sticky top-0 z-30 bg-[#12121b]/95 backdrop-blur border-b border-[#232334] px-6 py-4">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <header className="sticky top-0 z-30 bg-[#12121b]/95 backdrop-blur border-b border-[#232334] px-4 md:px-6 py-3.5">
+        <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-900/30 text-white">
+            <div className="h-10 w-10 rounded-none bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-900/30 text-white">
               <Bot className="h-5 w-5" />
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
                 AI Receptionist
-                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium">
+                <span className="text-xs px-2 py-0.5 rounded-none bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium">
                   v2.0
                 </span>
               </h1>
@@ -471,7 +471,7 @@ export default function AIReceptionist() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => scrollToSection('test-panel')}
-              className="px-4 py-2 rounded-xl border border-purple-500/40 hover:bg-purple-950/40 text-purple-300 font-medium text-xs flex items-center gap-2 transition"
+              className="px-4 py-2 rounded-none border border-purple-500/40 hover:bg-purple-950/40 text-purple-300 font-medium text-xs flex items-center gap-2 transition"
             >
               <Play className="h-3.5 w-3.5 fill-current" />
               Test Receptionist
@@ -480,7 +480,7 @@ export default function AIReceptionist() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className={`px-5 py-2 rounded-xl font-medium text-xs flex items-center gap-2 transition shadow-lg ${
+              className={`px-5 py-2 rounded-none font-medium text-xs flex items-center gap-2 transition shadow-lg ${
                 savedSuccess
                   ? 'bg-emerald-600 text-white shadow-emerald-900/40'
                   : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-900/30'
@@ -500,7 +500,7 @@ export default function AIReceptionist() {
       </header>
 
       {/* ── Main Container ── */}
-      <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+      <main className="w-full py-4 space-y-5">
         {/* Banner: Business Profile & Template */}
         <section className="bg-[#161622] border border-[#26263a] rounded-2xl p-4 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">

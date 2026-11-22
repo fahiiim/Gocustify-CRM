@@ -530,7 +530,7 @@ export default function MainLayout() {
           ) : null}
 
           {/* Page Content Outlet */}
-          <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#090D16] custom-scrollbar">
+          <main className="flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5 bg-[#090D16] custom-scrollbar">
             <Outlet />
           </main>
         </div>
