@@ -49,17 +49,22 @@ import {
   Activity,
   Heart,
   Briefcase,
+  MapPin,
+  Globe,
+  DollarSign,
+  Info,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { smartflowApi } from '../api/services';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuthStore } from '../store/useAuthStore';
 
 // Standard Voices with preview samples
 const VOICE_OPTIONS = [
-  { id: 'female_warm', name: 'Allison (Warm & Professional)', gender: 'Female', preview: 'Warm, friendly tone ideal for dental & clinic reception' },
+  { id: 'female_warm', name: 'Allison (Warm & Professional)', gender: 'Female', preview: 'Warm, friendly tone ideal for clinic & office reception' },
   { id: 'female_energetic', name: 'Emma (Friendly & Energetic)', gender: 'Female', preview: 'Upbeat and welcoming voice for service businesses' },
   { id: 'male_casual', name: 'Marcus (Calm & Professional)', gender: 'Male', preview: 'Authoritative, calm tone ideal for legal and corporate' },
-  { id: 'male_deep', name: 'David (Deep & Trustworthy)', gender: 'Male', preview: 'Direct, clear tone suitable for contractors and auto repair' },
+  { id: 'male_deep', name: 'David (Deep & Trustworthy)', gender: 'Male', preview: 'Direct, clear tone suitable for contractors and repair' },
 ];
 
 const LANGUAGE_OPTIONS = [
@@ -73,10 +78,12 @@ const LANGUAGE_OPTIONS = [
 
 export default function AIReceptionist() {
   const { t } = useLanguage();
+  const { user } = useAuthStore();
 
   // Settings & Status
   const [callSettings, setCallSettings] = useState(null);
   const [businessProfile, setBusinessProfile] = useState(null);
+  const [businessHours, setBusinessHours] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -98,7 +105,11 @@ export default function AIReceptionist() {
   const [customPhrases, setCustomPhrases] = useState([]);
   const [newPhraseInput, setNewPhraseInput] = useState('');
 
-  // Modals
+  // ── Modals State ──
+  const [businessModalOpen, setBusinessModalOpen] = useState(false);
+  const [inboundScriptModalOpen, setInboundScriptModalOpen] = useState(false);
+  const [outboundScriptModalOpen, setOutboundScriptModalOpen] = useState(false);
+  const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState(null);
   const [staffModalOpen, setStaffModalOpen] = useState(false);
@@ -106,6 +117,44 @@ export default function AIReceptionist() {
   const [insuranceModalOpen, setInsuranceModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+
+  // ── Form States for Modals ──
+  const [businessForm, setBusinessForm] = useState({
+    business_name: '',
+    phone_number: '',
+    website: '',
+    office_address_text: '',
+    start_hour: 8,
+    end_hour: 17,
+    days_type: 'mon_fri',
+  });
+
+  const [inboundScriptText, setInboundScriptText] = useState('');
+  const [outboundScriptText, setOutboundScriptText] = useState('');
+  const [knowledgeText, setKnowledgeText] = useState('');
+
+  const [serviceForm, setServiceForm] = useState({
+    name: '',
+    duration_minutes: 30,
+    provider_role: 'Specialist',
+    price: '',
+    active: true,
+  });
+
+  const [staffForm, setStaffForm] = useState({
+    name: '',
+    role: 'Front Desk',
+    department: 'Intake & Scheduling',
+    active: true,
+  });
+
+  const [insuranceForm, setInsuranceForm] = useState({
+    payer: '',
+    plan_name: 'PPO',
+    network_status: 'in_network',
+    verification_required: true,
+    active: true,
+  });
 
   // Permissions Toggles
   const [permissions, setPermissions] = useState({
@@ -165,70 +214,88 @@ export default function AIReceptionist() {
   const [testSessionId, setTestSessionId] = useState(null);
   const [testQueryInput, setTestQueryInput] = useState('');
   const [testSending, setTestSending] = useState(false);
-  const [latestResult, setLatestResult] = useState({
-    detected_intent: 'Insurance Question',
-    recognized_entity: 'Delta Dental',
-    backend_lookup: 'Found: Delta Dental - PPO | In-Network',
-    action_taken: 'Provide insurance information (No transfer)',
-    reply: 'Yes, BrightSmile Dental Care is in-network with Delta Dental PPO. Your specific benefits and coverage may still require verification with Delta Dental.',
-    success: true,
-  });
-  const [conversationHistory, setConversationHistory] = useState([
-    {
-      sender: 'user',
-      text: 'Do you take Delta Dental?',
-      time: '2:14 PM',
-    },
-    {
-      sender: 'bot',
-      intent: 'Insurance Question',
-      entity: 'Delta Dental',
-      statusBadge: 'In Network',
-      reply: 'Yes, BrightSmile Dental Care is in-network with Delta Dental PPO. Your specific benefits and coverage may still require verification with Delta Dental.',
-      time: '2:14 PM',
-    },
-  ]);
+  const [latestResult, setLatestResult] = useState(null);
+  const [conversationHistory, setConversationHistory] = useState([]);
+  const [sampleQueries, setSampleQueries] = useState([]);
 
-  const [sampleQueries, setSampleQueries] = useState([
-    { query: 'Do you take Delta Dental?', intent: 'Insurance Question' },
-    { query: "I'd like to schedule a cleaning.", intent: 'Book Appointment' },
-    { query: 'Can I reschedule my appointment?', intent: 'Reschedule Appointment' },
-    { query: "I'm a new patient, what do I need to do?", intent: 'New Patient Intake' },
-    { query: 'Do you offer payment plans?', intent: 'Pricing / Payment' },
-  ]);
+  // ── Computed Business Info ──
+  const activeBusinessName =
+    businessProfile?.business_name ||
+    user?.business_name ||
+    user?.company_name ||
+    (user?.full_name ? `${user.full_name}'s Office` : 'My Business');
+
+  const activeBusinessPhone =
+    businessProfile?.phone_number ||
+    businessProfile?.phone ||
+    user?.phone_number ||
+    '(555) 123-4567';
+
+  const formatHours = (hoursData) => {
+    if (!hoursData) return 'Mon - Fri: 8:00 AM - 5:00 PM';
+    const sH = hoursData.start_hour !== undefined ? hoursData.start_hour : 8;
+    const eH = hoursData.end_hour !== undefined ? hoursData.end_hour : 17;
+    const sLabel = `${sH > 12 ? sH - 12 : sH || 12}:00 ${sH >= 12 ? 'PM' : 'AM'}`;
+    const eLabel = `${eH > 12 ? eH - 12 : eH || 12}:00 ${eH >= 12 ? 'PM' : 'AM'}`;
+    const days = hoursData.days || [0, 1, 2, 3, 4];
+    const daysStr = days.length === 7 ? 'Every day'
+      : days.length === 6 ? 'Mon - Sat'
+      : 'Mon - Fri';
+    return `${daysStr}: ${sLabel} - ${eLabel}`;
+  };
+
+  const activeBusinessHours = formatHours(businessHours);
+  const activeBusinessWebsite = businessProfile?.website || '';
+  const activeBusinessAddress = businessProfile?.office_address_text || '';
 
   // Load initial settings and industry templates
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [settingsRes, profileRes] = await Promise.all([
+      const [settingsRes, profileRes, hoursRes] = await Promise.all([
         smartflowApi.getAICallSettings().catch(() => null),
         smartflowApi.getBusinessProfile?.().catch(() => null),
+        smartflowApi.getBusinessHours?.().catch(() => null),
       ]);
 
       const data = settingsRes?.data?.data || {};
+      const profile = profileRes?.data?.data || {};
+      const hours = hoursRes?.data?.data || null;
+
       setCallSettings(data);
       if (profileRes?.data?.data) {
-        setBusinessProfile(profileRes.data.data);
+        setBusinessProfile(profile);
+      }
+      if (hours) {
+        setBusinessHours(hours);
       }
 
-      // Determine initial business type
+      const bName = profile.business_name || user?.business_name || user?.company_name || 'My Business';
       const bType = data?.business_type || 'Dental Clinic';
-      applyIndustryTemplate(bType, data, false);
+
+      // Load saved services & staff if available
+      if (data?.industry_conditional_data?.services?.length) {
+        setServicesList(data.industry_conditional_data.services);
+      }
+      if (data?.industry_conditional_data?.staff?.length) {
+        setStaffList(data.industry_conditional_data.staff);
+      }
+
+      await applyIndustryTemplate(bType, data, false, bName);
     } catch (err) {
       console.error('Failed to load receptionist settings:', err);
       setErrorMessage('Could not load current settings. Running with defaults.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   // Apply Industry Template
-  const applyIndustryTemplate = async (industryKey, existingData = null, showConfirm = true) => {
+  const applyIndustryTemplate = async (industryKey, existingData = null, showConfirm = true, overrideName = null) => {
     if (showConfirm && !window.confirm(`Switch template to ${industryKey}? This will preload recommended defaults for this industry.`)) {
       return;
     }
@@ -251,19 +318,25 @@ export default function AIReceptionist() {
 
       setSelectedIndustry(normKey);
 
+      const bName = overrideName || activeBusinessName;
+
       if (preset) {
         setTemplateSummary(preset.summary || `Preloaded defaults for ${normKey}`);
         setTemplateAppliedBadge('Template Applied');
 
-        // Set Services
-        setServicesList(preset.services || [
-          { id: '1', name: 'General Consultation', duration_minutes: 30, provider_role: 'Specialist', active: true },
-        ]);
+        // Set Services (unless user already customized them)
+        if (!servicesList.length || showConfirm) {
+          setServicesList(preset.services || [
+            { id: '1', name: 'General Consultation', duration_minutes: 30, provider_role: 'Specialist', active: true },
+          ]);
+        }
 
         // Set Staff
-        setStaffList(preset.staff || [
-          { id: '1', name: 'Front Desk', role: 'Intake & Scheduling', active: true },
-        ]);
+        if (!staffList.length || showConfirm) {
+          setStaffList(preset.staff || [
+            { id: '1', name: 'Front Desk', role: 'Intake & Scheduling', active: true },
+          ]);
+        }
 
         // Set Insurance or Conditional Data
         if (preset.insurance_plans) {
@@ -279,11 +352,21 @@ export default function AIReceptionist() {
         // Set Custom Phrases
         setCustomPhrases(preset.custom_phrases || ['Our office', 'Our team', 'Your appointment']);
 
-        // Set Sample Test Queries
+        // Set Sample Test Queries with dynamic business name
         if (preset.sample_test_queries && preset.sample_test_queries.length > 0) {
-          setSampleQueries(preset.sample_test_queries);
-          // Update default simulator highlight
-          const first = preset.sample_test_queries[0];
+          const dynamicQueries = preset.sample_test_queries.map((q) => ({
+            ...q,
+            reply: (q.reply || '')
+              .replace(/BrightSmile Dental Care/g, bName)
+              .replace(/Sterling & Vance Legal Counsel/g, bName)
+              .replace(/Sterling Law/g, bName)
+              .replace(/Metro Community Health/g, bName)
+              .replace(/Radiant Health & Wellness Center/g, bName)
+              .replace(/Radiant Wellness/g, bName),
+          }));
+          setSampleQueries(dynamicQueries);
+
+          const first = dynamicQueries[0];
           setLatestResult({
             detected_intent: first.intent,
             recognized_entity: first.entity,
@@ -292,16 +375,47 @@ export default function AIReceptionist() {
             reply: first.reply,
             success: true,
           });
+
+          setConversationHistory([
+            { sender: 'user', text: first.query, time: '10:00 AM' },
+            {
+              sender: 'bot',
+              intent: first.intent,
+              entity: first.entity,
+              statusBadge: 'Verified',
+              reply: first.reply,
+              time: '10:00 AM',
+            },
+          ]);
         }
+
+        // Formulate personalized greeting templates substituting dynamic business name
+        let customizedInbound = preset.inbound_greeting || `Thank you for calling ${bName}. How can I assist you today?`;
+        customizedInbound = customizedInbound
+          .replace(/BrightSmile Dental Care/g, bName)
+          .replace(/Sterling & Vance Legal Counsel/g, bName)
+          .replace(/Metro Community Health/g, bName)
+          .replace(/Radiant Health & Wellness Center/g, bName);
+
+        let customizedOutbound = preset.outbound_greeting || `Hi {first_name}, this is ${bName} with a quick reminder about your appointment on {date} at {time}.`;
+        customizedOutbound = customizedOutbound
+          .replace(/BrightSmile Dental Care/g, bName)
+          .replace(/Sterling Law/g, bName)
+          .replace(/Metro Health Clinic/g, bName)
+          .replace(/Radiant Wellness/g, bName);
 
         // Update Greetings in Settings
         setCallSettings((prev) => ({
-          ...(prev || {}),
+          ...(prev || existingData || {}),
           business_type: normKey,
-          assistant_name: prev?.assistant_name || 'Sarah',
-          voice_id: prev?.voice_id || 'female_warm',
-          greeting_inbound: prev?.greeting_inbound || preset.inbound_greeting || 'Thank you for calling. How can I help you today?',
-          greeting_outbound: prev?.greeting_outbound || preset.outbound_greeting || 'Hi {first_name}, this is a quick reminder about your upcoming appointment.',
+          assistant_name: prev?.assistant_name || existingData?.assistant_name || 'Sarah',
+          voice_id: prev?.voice_id || existingData?.voice_id || 'female_warm',
+          greeting_inbound: showConfirm
+            ? customizedInbound
+            : (existingData?.greeting_inbound || prev?.greeting_inbound || customizedInbound),
+          greeting_outbound: showConfirm
+            ? customizedOutbound
+            : (existingData?.greeting_outbound || prev?.greeting_outbound || customizedOutbound),
         }));
       }
     } catch (err) {
@@ -309,7 +423,7 @@ export default function AIReceptionist() {
     }
   };
 
-  // Save Settings to Backend
+  // ── Save Master Settings to Backend ──
   const handleSave = async () => {
     setSaving(true);
     setErrorMessage('');
@@ -330,7 +444,11 @@ export default function AIReceptionist() {
         recording_config: recordingConfig,
         outbound_consent_config: consentConfig,
         crm_lead_config: crmLeadConfig,
-        industry_conditional_data: conditionalData,
+        industry_conditional_data: {
+          ...conditionalData,
+          services: servicesList,
+          staff: staffList,
+        },
       };
 
       await smartflowApi.updateAICallSettings(payload);
@@ -343,7 +461,66 @@ export default function AIReceptionist() {
     }
   };
 
-  // Run Test Query in Simulator
+  // ── Handle Save Business Profile Modal ──
+  const handleSaveBusinessProfile = async (e) => {
+    e?.preventDefault();
+    setSaving(true);
+    setErrorMessage('');
+    try {
+      const days = businessForm.days_type === 'mon_fri' ? [0, 1, 2, 3, 4]
+        : businessForm.days_type === 'mon_sat' ? [0, 1, 2, 3, 4, 5]
+        : [0, 1, 2, 3, 4, 5, 6];
+
+      const profilePayload = {
+        business_name: businessForm.business_name.trim(),
+        phone_number: businessForm.phone_number.trim() || null,
+        website: businessForm.website.trim() || null,
+        office_address_text: businessForm.office_address_text.trim() || null,
+      };
+
+      const hoursPayload = {
+        start_hour: parseInt(businessForm.start_hour, 10),
+        end_hour: parseInt(businessForm.end_hour, 10),
+        days,
+      };
+
+      await Promise.all([
+        smartflowApi.updateBusinessProfile(profilePayload),
+        smartflowApi.updateBusinessHours(hoursPayload).catch(() => null),
+      ]);
+
+      setBusinessProfile((prev) => ({
+        ...(prev || {}),
+        ...profilePayload,
+      }));
+
+      setBusinessHours((prev) => ({
+        ...(prev || {}),
+        ...hoursPayload,
+      }));
+
+      // Update scripts to replace previous business name if requested
+      const newName = businessForm.business_name.trim();
+      setCallSettings((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          greeting_inbound: prev.greeting_inbound ? prev.greeting_inbound.replace(activeBusinessName, newName) : prev.greeting_inbound,
+          greeting_outbound: prev.greeting_outbound ? prev.greeting_outbound.replace(activeBusinessName, newName) : prev.greeting_outbound,
+        };
+      });
+
+      setBusinessModalOpen(false);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (err) {
+      setErrorMessage(err?.response?.data?.message || 'Failed to update business profile. Please verify your details.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Run Test Query in Simulator ──
   const runTestSimulation = async (queryText) => {
     const text = (queryText || testQueryInput).trim();
     if (!text) return;
@@ -359,7 +536,6 @@ export default function AIReceptionist() {
     setTestQueryInput('');
 
     try {
-      // Start session if not existing
       let sId = testSessionId;
       if (!sId) {
         const startRes = await smartflowApi.startAICallTest().catch(() => null);
@@ -374,7 +550,7 @@ export default function AIReceptionist() {
       const entity = data?.recognized_entity || 'Service Inquiry';
       const lookup = data?.backend_lookup || 'Found active records';
       const action = data?.action_taken || 'AI handles directly';
-      const reply = data?.reply || 'Thank you for reaching out! I would be glad to help you with that.';
+      const reply = data?.reply || `Thank you for contacting ${activeBusinessName}! I would be glad to help you with that.`;
 
       const resultObj = {
         detected_intent: intent,
@@ -437,7 +613,7 @@ export default function AIReceptionist() {
     setEmergencyKeywords(emergencyKeywords.filter((k) => k !== kw));
   };
 
-  // Conditional Card check
+  // Conditional Card checks
   const isHealthcare = selectedIndustry.includes('Dentist') || selectedIndustry.includes('Medical') || selectedIndustry.includes('Chiro') || selectedIndustry.includes('Wellness');
   const isLawFirm = selectedIndustry.includes('Law');
   const isHomeServices = selectedIndustry.includes('Home');
@@ -471,7 +647,7 @@ export default function AIReceptionist() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => scrollToSection('test-panel')}
-              className="px-4 py-2 rounded-none border border-purple-500/40 hover:bg-purple-950/40 text-purple-300 font-medium text-xs flex items-center gap-2 transition"
+              className="px-4 py-2 rounded-none border border-purple-500/40 hover:bg-purple-950/40 text-purple-300 font-medium text-xs flex items-center gap-2 transition cursor-pointer"
             >
               <Play className="h-3.5 w-3.5 fill-current" />
               Test Receptionist
@@ -480,7 +656,7 @@ export default function AIReceptionist() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className={`px-5 py-2 rounded-none font-medium text-xs flex items-center gap-2 transition shadow-lg ${
+              className={`px-5 py-2 rounded-none font-medium text-xs flex items-center gap-2 transition shadow-lg cursor-pointer ${
                 savedSuccess
                   ? 'bg-emerald-600 text-white shadow-emerald-900/40'
                   : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-900/30'
@@ -499,10 +675,23 @@ export default function AIReceptionist() {
         </div>
       </header>
 
+      {/* ── Status Notification Banner ── */}
+      {errorMessage && (
+        <div className="mx-4 md:mx-6 mt-3 p-3 bg-rose-950/50 border border-rose-800 text-rose-200 text-xs flex items-center justify-between rounded-none">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+          <button onClick={() => setErrorMessage('')} className="text-rose-400 hover:text-white">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* ── Main Container ── */}
-      <main className="w-full py-4 space-y-5">
+      <main className="w-full px-4 md:px-6 py-4 space-y-5">
         {/* Banner: Business Profile & Template */}
-        <section className="bg-[#161622] border border-[#26263a] rounded-2xl p-4 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        <section className="bg-[#161622] border border-[#26263a] rounded-none p-4 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 text-slate-300 text-sm font-semibold">
               <Building className="h-4 w-4 text-purple-400" />
@@ -515,7 +704,7 @@ export default function AIReceptionist() {
                 <select
                   value={selectedIndustry}
                   onChange={(e) => applyIndustryTemplate(e.target.value)}
-                  className="bg-[#1f1f2e] text-white text-xs font-medium py-1.5 pl-3 pr-8 rounded-lg border border-[#35354e] focus:outline-none focus:border-purple-500 cursor-pointer appearance-none"
+                  className="bg-[#1f1f2e] text-white text-xs font-medium py-1.5 pl-3 pr-8 rounded-none border border-[#35354e] focus:outline-none focus:border-purple-500 cursor-pointer appearance-none"
                 >
                   <option value="Dentist (Dental Clinic)">Dentist (Dental Clinic)</option>
                   <option value="Medical Clinic">Medical Clinic</option>
@@ -533,7 +722,7 @@ export default function AIReceptionist() {
               </div>
             </div>
 
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-medium flex items-center gap-1.5">
+            <span className="text-xs px-2.5 py-0.5 rounded-none bg-purple-950 text-purple-300 border border-purple-800 font-medium flex items-center gap-1.5">
               <Check className="h-3 w-3 text-purple-400" />
               {templateAppliedBadge}
             </span>
@@ -544,14 +733,14 @@ export default function AIReceptionist() {
           </div>
 
           <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
-            <div className="text-xs text-purple-300/80 bg-purple-950/40 border border-purple-900/40 px-3 py-1 rounded-full flex items-center gap-1.5">
+            <div className="text-xs text-purple-300/80 bg-purple-950/40 border border-purple-900/40 px-3 py-1 rounded-none flex items-center gap-1.5">
               <Sparkles className="h-3 w-3 text-purple-400" />
               <span>Dynamic sections adapt to business type</span>
             </div>
 
             <button
               onClick={() => setTemplateModalOpen(true)}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#20202e] hover:bg-[#28283a] border border-[#373752] text-slate-200 transition"
+              className="px-3 py-1.5 text-xs font-medium rounded-none bg-[#20202e] hover:bg-[#28283a] border border-[#373752] text-slate-200 transition cursor-pointer"
             >
               Change Template
             </button>
@@ -586,7 +775,7 @@ export default function AIReceptionist() {
             <button
               key={tab.id}
               onClick={() => scrollToSection(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+              className={`px-3 py-1.5 rounded-none text-xs font-medium whitespace-nowrap transition cursor-pointer ${
                 activeTab === tab.id
                   ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
                   : 'bg-[#181824] text-slate-400 hover:text-slate-200 hover:bg-[#222232]'
@@ -604,71 +793,100 @@ export default function AIReceptionist() {
             {/* Row 1: Business & Voice + Inbound Script */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Card 1: Business & Voice Setup */}
-              <div id="business-voice" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+              <div id="business-voice" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <Mic className="h-4 w-4 text-purple-400" />
                       <h3 className="font-semibold text-sm text-white">Business & Voice Setup</h3>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                      <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
+                    <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                      <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Connected
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 mb-4">Basic business info and AI voice.</p>
+                  <p className="text-xs text-slate-400 mb-4">Live business profile, operating hours, and AI voice persona.</p>
 
                   <div className="space-y-2 text-xs">
-                    <div className="flex justify-between py-1 border-b border-[#1f1f2e]">
+                    <div className="flex justify-between py-1.5 border-b border-[#1f1f2e]">
                       <span className="text-slate-400">Business Name:</span>
-                      <span className="font-medium text-slate-200">{businessProfile?.company_name || 'BrightSmile Dental Care'}</span>
+                      <span className="font-semibold text-white text-right truncate max-w-[200px]" title={activeBusinessName}>
+                        {activeBusinessName}
+                      </span>
                     </div>
-                    <div className="flex justify-between py-1 border-b border-[#1f1f2e]">
+                    <div className="flex justify-between py-1.5 border-b border-[#1f1f2e]">
                       <span className="text-slate-400">Business Phone:</span>
-                      <span className="font-medium text-slate-200">{businessProfile?.phone || '(555) 123-4567'}</span>
+                      <span className="font-medium text-slate-200">{activeBusinessPhone}</span>
                     </div>
-                    <div className="flex justify-between py-1 border-b border-[#1f1f2e]">
-                      <span className="text-slate-400">Business Hours:</span>
-                      <span className="font-medium text-slate-200">Mon - Fri: 8:00 AM - 5:00 PM</span>
+                    <div className="flex justify-between py-1.5 border-b border-[#1f1f2e]">
+                      <span className="text-slate-400">Operating Hours:</span>
+                      <span className="font-medium text-slate-200 text-right">{activeBusinessHours}</span>
                     </div>
-                    <div className="flex justify-between py-1 border-b border-[#1f1f2e]">
+                    {activeBusinessWebsite && (
+                      <div className="flex justify-between py-1.5 border-b border-[#1f1f2e]">
+                        <span className="text-slate-400">Website:</span>
+                        <span className="font-medium text-purple-300 text-right truncate max-w-[200px]">{activeBusinessWebsite}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-1.5 border-b border-[#1f1f2e]">
                       <span className="text-slate-400">AI Voice:</span>
                       <span className="font-medium text-purple-300 flex items-center gap-1">
                         <Volume2 className="h-3 w-3" />
                         {VOICE_OPTIONS.find((v) => v.id === callSettings?.voice_id)?.name || 'Allison (Warm & Professional)'}
                       </span>
                     </div>
-                    <div className="flex justify-between py-1">
+                    <div className="flex justify-between py-1.5">
                       <span className="text-slate-400">AI Name:</span>
                       <span className="font-medium text-slate-200">{callSettings?.assistant_name || 'Sarah'}</span>
                     </div>
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setVoiceModalOpen(true)}
-                  className="mt-4 w-full py-1.5 px-3 rounded-lg border border-[#303046] hover:bg-[#1e1e2d] text-xs font-medium text-slate-300 transition flex items-center justify-center gap-1.5"
-                >
-                  <Edit2 className="h-3 w-3" />
-                  Edit Voice & Name
-                </button>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      setBusinessForm({
+                        business_name: activeBusinessName,
+                        phone_number: activeBusinessPhone,
+                        website: activeBusinessWebsite,
+                        office_address_text: activeBusinessAddress,
+                        start_hour: businessHours?.start_hour ?? 8,
+                        end_hour: businessHours?.end_hour ?? 17,
+                        days_type: businessHours?.days?.length === 7 ? 'all_week' : businessHours?.days?.length === 6 ? 'mon_sat' : 'mon_fri',
+                      });
+                      setBusinessModalOpen(true);
+                    }}
+                    className="py-1.5 px-3 rounded-none border border-purple-500/40 bg-purple-950/20 hover:bg-purple-900/30 text-xs font-medium text-purple-200 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Building className="h-3 w-3 text-purple-400" />
+                    Edit Business Info
+                  </button>
+
+                  <button
+                    onClick={() => setVoiceModalOpen(true)}
+                    className="py-1.5 px-3 rounded-none border border-[#303046] hover:bg-[#1e1e2d] text-xs font-medium text-slate-300 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                    Edit Voice & Name
+                  </button>
+                </div>
               </div>
 
               {/* Card 2: Inbound Call Script */}
-              <div id="scripts" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+              <div id="scripts" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <MessageSquare className="h-4 w-4 text-purple-400" />
                       <h3 className="font-semibold text-sm text-white">Inbound Call Script</h3>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                    <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                       <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mb-3">How the AI answers incoming calls.</p>
 
-                  <div className="bg-[#1a1a27] border border-[#2b2b3f] rounded-xl p-3 text-xs italic text-slate-300 leading-relaxed relative">
-                    "{callSettings?.greeting_inbound || 'Thank you for calling BrightSmile Dental Care. This is our virtual receptionist. How can I help you today?'}"
+                  <div className="bg-[#1a1a27] border border-[#2b2b3f] rounded-none p-3 text-xs italic text-slate-300 leading-relaxed relative">
+                    "{callSettings?.greeting_inbound || `Thank you for calling ${activeBusinessName}. This is our virtual receptionist. How can I help you today?`}"
                   </div>
                 </div>
 
@@ -676,12 +894,10 @@ export default function AIReceptionist() {
                   <span>Variables: <code className="text-purple-400">{'{business}'}</code>, <code className="text-purple-400">{'{name}'}</code></span>
                   <button
                     onClick={() => {
-                      const newGreeting = prompt('Edit Inbound Call Script:', callSettings?.greeting_inbound || '');
-                      if (newGreeting !== null) {
-                        setCallSettings((prev) => ({ ...prev, greeting_inbound: newGreeting }));
-                      }
+                      setInboundScriptText(callSettings?.greeting_inbound || `Thank you for calling ${activeBusinessName}. This is our virtual receptionist. How can I help you today?`);
+                      setInboundScriptModalOpen(true);
                     }}
-                    className="text-purple-400 hover:text-purple-300 font-medium"
+                    className="text-purple-400 hover:text-purple-300 font-medium px-2 py-1 border border-purple-500/30 hover:bg-purple-950/40 rounded-none transition cursor-pointer"
                   >
                     Edit Script
                   </button>
@@ -692,21 +908,21 @@ export default function AIReceptionist() {
             {/* Row 2: Outbound Script + Business Knowledge */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Card 3: Outbound Call Script */}
-              <div className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+              <div className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <PhoneOutgoing className="h-4 w-4 text-purple-400" />
                       <h3 className="font-semibold text-sm text-white">Outbound Call Script</h3>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                    <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                       <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mb-3">For follow-ups, reminders, and outreach.</p>
 
-                  <div className="bg-[#1a1a27] border border-[#2b2b3f] rounded-xl p-3 text-xs italic text-slate-300 leading-relaxed">
-                    "{callSettings?.greeting_outbound || 'Hi {first_name}, this is BrightSmile Dental Care with a quick reminder about your appointment on {date} at {time}. Please let us know if you need to reschedule.'}"
+                  <div className="bg-[#1a1a27] border border-[#2b2b3f] rounded-none p-3 text-xs italic text-slate-300 leading-relaxed">
+                    "{callSettings?.greeting_outbound || `Hi {first_name}, this is ${activeBusinessName} with a quick reminder about your upcoming appointment on {date} at {time}. Please let us know if you need to reschedule.`}"
                   </div>
                 </div>
 
@@ -714,12 +930,10 @@ export default function AIReceptionist() {
                   <span>Variables: <code className="text-purple-400">{'{first_name}'}</code>, <code className="text-purple-400">{'{date}'}</code></span>
                   <button
                     onClick={() => {
-                      const newOutbound = prompt('Edit Outbound Call Script:', callSettings?.greeting_outbound || '');
-                      if (newOutbound !== null) {
-                        setCallSettings((prev) => ({ ...prev, greeting_outbound: newOutbound }));
-                      }
+                      setOutboundScriptText(callSettings?.greeting_outbound || `Hi {first_name}, this is ${activeBusinessName} with a quick reminder about your upcoming appointment on {date} at {time}. Please let us know if you need to reschedule.`);
+                      setOutboundScriptModalOpen(true);
                     }}
-                    className="text-purple-400 hover:text-purple-300 font-medium"
+                    className="text-purple-400 hover:text-purple-300 font-medium px-2 py-1 border border-purple-500/30 hover:bg-purple-950/40 rounded-none transition cursor-pointer"
                   >
                     Edit Script
                   </button>
@@ -727,18 +941,18 @@ export default function AIReceptionist() {
               </div>
 
               {/* Card 4: Business Knowledge */}
-              <div id="knowledge" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+              <div id="knowledge" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <Database className="h-4 w-4 text-purple-400" />
                       <h3 className="font-semibold text-sm text-white">Business Knowledge</h3>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                    <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                       <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 mb-3">Key information the AI uses to answer questions.</p>
+                  <p className="text-xs text-slate-400 mb-3">Key information the AI uses to answer customer questions.</p>
 
                   <div className="space-y-1.5 text-xs text-slate-300">
                     <div className="flex items-center gap-2">
@@ -755,19 +969,17 @@ export default function AIReceptionist() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                      <span>Common FAQs (new patients, prep, forms)</span>
+                      <span>Common FAQs (new clients/patients, prep, forms)</span>
                     </div>
                   </div>
                 </div>
 
                 <button
                   onClick={() => {
-                    const extra = prompt('Add Business Knowledge or Policies:', callSettings?.knowledge_base || '');
-                    if (extra !== null) {
-                      setCallSettings((prev) => ({ ...prev, knowledge_base: extra }));
-                    }
+                    setKnowledgeText(callSettings?.knowledge_base || '');
+                    setKnowledgeModalOpen(true);
                   }}
-                  className="mt-4 w-full py-1.5 px-3 rounded-lg border border-[#303046] hover:bg-[#1e1e2d] text-xs font-medium text-slate-300 transition flex items-center justify-center gap-1.5"
+                  className="mt-4 w-full py-1.5 px-3 rounded-none border border-[#303046] hover:bg-[#1e1e2d] text-xs font-medium text-slate-300 transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <FileText className="h-3 w-3" />
                   Manage Knowledge Details
@@ -778,26 +990,26 @@ export default function AIReceptionist() {
             {/* Row 3: Services & Staff */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Card 5: Services / Appointment Types */}
-              <div id="services" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg">
+              <div id="services" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-purple-400" />
                     <h3 className="font-semibold text-sm text-white">Services / Appointment Types</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                    <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                    <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />{servicesList.length} Services
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mb-3">Services, duration, staff, and booking rules.</p>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-48 scrollbar-thin">
                   <table className="w-full text-left text-xs">
                     <thead>
                       <tr className="text-slate-400 border-b border-[#232334] pb-1">
                         <th className="pb-1 font-medium">Service</th>
                         <th className="pb-1 font-medium">Duration</th>
                         <th className="pb-1 font-medium">Provider</th>
-                        <th className="pb-1 font-medium text-right">Status</th>
+                        <th className="pb-1 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#1e1e2c]">
@@ -807,9 +1019,34 @@ export default function AIReceptionist() {
                           <td className="py-2 text-slate-400">{serv.duration_minutes} min</td>
                           <td className="py-2 text-slate-400">{serv.provider_role}</td>
                           <td className="py-2 text-right">
-                            <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-medium">
-                              Active
-                            </span>
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => {
+                                  setEditingService(serv);
+                                  setServiceForm({
+                                    name: serv.name,
+                                    duration_minutes: serv.duration_minutes,
+                                    provider_role: serv.provider_role,
+                                    price: serv.price || '',
+                                    active: serv.active ?? true,
+                                  });
+                                  setServiceModalOpen(true);
+                                }}
+                                className="p-1 hover:text-purple-300 text-slate-400 transition cursor-pointer"
+                                title="Edit Service"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setServicesList(servicesList.filter((s) => s.id !== serv.id));
+                                }}
+                                className="p-1 hover:text-rose-400 text-slate-400 transition cursor-pointer"
+                                title="Delete Service"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -819,64 +1056,90 @@ export default function AIReceptionist() {
 
                 <button
                   onClick={() => {
-                    const name = prompt('New Service Name:');
-                    if (name) {
-                      setServicesList([
-                        ...servicesList,
-                        { id: Date.now().toString(), name, duration_minutes: 30, provider_role: 'Staff', active: true },
-                      ]);
-                    }
+                    setEditingService(null);
+                    setServiceForm({
+                      name: '',
+                      duration_minutes: 30,
+                      provider_role: 'Specialist',
+                      price: '',
+                      active: true,
+                    });
+                    setServiceModalOpen(true);
                   }}
-                  className="mt-3 w-full py-1 text-xs text-purple-400 hover:text-purple-300 font-medium flex items-center justify-center gap-1"
+                  className="mt-3 w-full py-1 text-xs text-purple-400 hover:text-purple-300 font-medium flex items-center justify-center gap-1 border border-purple-500/20 hover:bg-purple-950/30 rounded-none transition cursor-pointer"
                 >
                   <Plus className="h-3 w-3" /> Add Service
                 </button>
               </div>
 
               {/* Card 6: Staff / Teams */}
-              <div id="staff" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg">
+              <div id="staff" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <Users2 className="h-4 w-4 text-purple-400" />
                     <h3 className="font-semibold text-sm text-white">Staff / Teams</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
-                    <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                    <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />{staffList.length} Members
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mb-3">People and teams the AI can route to or schedule with.</p>
 
-                <div className="space-y-2 text-xs">
+                <div className="space-y-2 text-xs max-h-48 overflow-y-auto pr-1 scrollbar-thin">
                   {staffList.map((staff) => (
-                    <div key={staff.id} className="flex items-center justify-between p-2 rounded-lg bg-[#191926] border border-[#252538]">
+                    <div key={staff.id} className="flex items-center justify-between p-2 rounded-none bg-[#191926] border border-[#252538]">
                       <div className="flex items-center gap-2">
-                        <div className="h-6 w-6 rounded-full bg-purple-900/60 text-purple-300 flex items-center justify-center font-bold text-[10px]">
+                        <div className="h-6 w-6 rounded-none bg-purple-900/60 text-purple-300 flex items-center justify-center font-bold text-[10px]">
                           {staff.name.charAt(0)}
                         </div>
                         <div>
                           <div className="font-medium text-slate-200">{staff.name}</div>
-                          <div className="text-[10px] text-slate-400">{staff.role}</div>
+                          <div className="text-[10px] text-slate-400">{staff.role} {staff.department ? `• ${staff.department}` : ''}</div>
                         </div>
                       </div>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-medium">
-                        Active
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setEditingStaff(staff);
+                            setStaffForm({
+                              name: staff.name,
+                              role: staff.role,
+                              department: staff.department || '',
+                              active: staff.active ?? true,
+                            });
+                            setStaffModalOpen(true);
+                          }}
+                          className="p-1 hover:text-purple-300 text-slate-400 transition cursor-pointer"
+                          title="Edit Member"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setStaffList(staffList.filter((s) => s.id !== staff.id));
+                          }}
+                          className="p-1 hover:text-rose-400 text-slate-400 transition cursor-pointer"
+                          title="Delete Member"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
 
                 <button
                   onClick={() => {
-                    const name = prompt('New Staff Member Name:');
-                    if (name) {
-                      const role = prompt('Role / Title:', 'Provider');
-                      setStaffList([
-                        ...staffList,
-                        { id: Date.now().toString(), name, role: role || 'Team', active: true },
-                      ]);
-                    }
+                    setEditingStaff(null);
+                    setStaffForm({
+                      name: '',
+                      role: 'Staff Specialist',
+                      department: 'Intake & Scheduling',
+                      active: true,
+                    });
+                    setStaffModalOpen(true);
                   }}
-                  className="mt-3 w-full py-1 text-xs text-purple-400 hover:text-purple-300 font-medium flex items-center justify-center gap-1"
+                  className="mt-3 w-full py-1 text-xs text-purple-400 hover:text-purple-300 font-medium flex items-center justify-center gap-1 border border-purple-500/20 hover:bg-purple-950/30 rounded-none transition cursor-pointer"
                 >
                   <Plus className="h-3 w-3" /> Add Team Member
                 </button>
@@ -885,13 +1148,13 @@ export default function AIReceptionist() {
 
             {/* Row 4: CONDITIONAL SECTION (Adapts by Business Type) */}
             {isHealthcare && (
-              <div id="insurance" className="bg-[#14141f] border border-[#2e2640] rounded-2xl p-5 shadow-lg">
+              <div id="insurance" className="bg-[#14141f] border border-[#2e2640] rounded-none p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-purple-400" />
                     <h3 className="font-semibold text-sm text-white">Insurance (Healthcare Only)</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-purple-950 text-purple-300 border border-purple-800 font-medium">
                     Dentist / Medical / Chiropractor Only
                   </span>
                 </div>
@@ -905,7 +1168,7 @@ export default function AIReceptionist() {
                         <th className="pb-1 font-medium">Plan / Type</th>
                         <th className="pb-1 font-medium">Network Status</th>
                         <th className="pb-1 font-medium">Verification</th>
-                        <th className="pb-1 font-medium text-right">Active</th>
+                        <th className="pb-1 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#1e1e2c]">
@@ -917,7 +1180,7 @@ export default function AIReceptionist() {
                           </td>
                           <td className="py-2.5 text-slate-400">{plan.plan_name || 'PPO'}</td>
                           <td className="py-2.5">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                            <span className={`px-2 py-0.5 rounded-none text-[10px] font-medium ${
                               plan.network_status === 'in_network'
                                 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                                 : 'bg-amber-950 text-amber-300 border border-amber-800'
@@ -929,49 +1192,96 @@ export default function AIReceptionist() {
                             {plan.verification_required ? 'Required' : 'Optional'}
                           </td>
                           <td className="py-2.5 text-right">
-                            <button
-                              onClick={() => {
-                                setInsurancePlans(insurancePlans.map((p) => p.id === plan.id ? { ...p, active: !p.active } : p));
-                              }}
-                              className={`w-8 h-4 rounded-full transition-colors relative ${plan.active ? 'bg-purple-600' : 'bg-slate-700'}`}
-                            >
-                              <span className={`block w-3 h-3 rounded-full bg-white transition-transform ${plan.active ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setInsurancePlans(insurancePlans.map((p) => p.id === plan.id ? { ...p, active: !p.active } : p));
+                                }}
+                                className={`px-2 py-0.5 text-[10px] rounded-none font-medium cursor-pointer ${
+                                  plan.active ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-slate-800 text-slate-400'
+                                }`}
+                              >
+                                {plan.active ? 'Active' : 'Disabled'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingPlan(plan);
+                                  setInsuranceForm({
+                                    payer: plan.payer,
+                                    plan_name: plan.plan_name || 'PPO',
+                                    network_status: plan.network_status || 'in_network',
+                                    verification_required: plan.verification_required ?? true,
+                                    active: plan.active ?? true,
+                                  });
+                                  setInsuranceModalOpen(true);
+                                }}
+                                className="p-1 hover:text-purple-300 text-slate-400 transition cursor-pointer"
+                                title="Edit Plan"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setInsurancePlans(insurancePlans.filter((p) => p.id !== plan.id));
+                                }}
+                                className="p-1 hover:text-rose-400 text-slate-400 transition cursor-pointer"
+                                title="Delete Plan"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+
+                <button
+                  onClick={() => {
+                    setEditingPlan(null);
+                    setInsuranceForm({
+                      payer: '',
+                      plan_name: 'PPO',
+                      network_status: 'in_network',
+                      verification_required: true,
+                      active: true,
+                    });
+                    setInsuranceModalOpen(true);
+                  }}
+                  className="mt-3 w-full py-1 text-xs text-purple-400 hover:text-purple-300 font-medium flex items-center justify-center gap-1 border border-purple-500/20 hover:bg-purple-950/30 rounded-none transition cursor-pointer"
+                >
+                  <Plus className="h-3 w-3" /> Add Insurance Plan
+                </button>
               </div>
             )}
 
             {isLawFirm && (
-              <div id="legal" className="bg-[#14141f] border border-[#2e2640] rounded-2xl p-5 shadow-lg">
+              <div id="legal" className="bg-[#14141f] border border-[#2e2640] rounded-none p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Scale className="h-4 w-4 text-purple-400" />
                     <h3 className="font-semibold text-sm text-white">Legal Intake & Practice Areas</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-purple-950 text-purple-300 border border-purple-800 font-medium">
                     Law Firm Only
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mb-3">Intake screening parameters, conflict checking rules, and practice areas.</p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div className="p-3 bg-[#181827] border border-[#252538] rounded-xl space-y-2">
+                  <div className="p-3 bg-[#181827] border border-[#252538] rounded-none space-y-2">
                     <div className="font-medium text-slate-200">Active Practice Areas</div>
                     <div className="flex flex-wrap gap-1.5">
                       {['Personal Injury', 'Family Law & Divorce', 'Business Law', 'Estate Planning', 'Criminal Defense'].map((area) => (
-                        <span key={area} className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 text-[11px]">
+                        <span key={area} className="px-2 py-0.5 rounded-none bg-purple-950 text-purple-300 border border-purple-800 text-[11px]">
                           {area}
                         </span>
                       ))}
                     </div>
                   </div>
 
-                  <div className="p-3 bg-[#181827] border border-[#252538] rounded-xl space-y-2">
+                  <div className="p-3 bg-[#181827] border border-[#252538] rounded-none space-y-2">
                     <div className="font-medium text-slate-200">Intake Safeguards</div>
                     <div className="flex items-center justify-between text-slate-300">
                       <span>Conflict Checking Required</span>
@@ -987,32 +1297,32 @@ export default function AIReceptionist() {
             )}
 
             {isHomeServices && (
-              <div id="dispatch" className="bg-[#14141f] border border-[#2e2640] rounded-2xl p-5 shadow-lg">
+              <div id="dispatch" className="bg-[#14141f] border border-[#2e2640] rounded-none p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Wrench className="h-4 w-4 text-purple-400" />
                     <h3 className="font-semibold text-sm text-white">Service Area & Dispatch</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-purple-950 text-purple-300 border border-purple-800 font-medium">
                     Home Services Only
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mb-3">Coverage radius, ZIP codes, and technician dispatch rates.</p>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">Service Radius</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">25 Miles</div>
                   </div>
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">Diagnostic Fee</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">$89 (Waived)</div>
                   </div>
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">Emergency Dispatch</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">$149 Fee</div>
                   </div>
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">Primary ZIPs</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">10001 - 10016</div>
                   </div>
@@ -1021,26 +1331,26 @@ export default function AIReceptionist() {
             )}
 
             {isDealership && (
-              <div id="dealership" className="bg-[#14141f] border border-[#2e2640] rounded-2xl p-5 shadow-lg">
+              <div id="dealership" className="bg-[#14141f] border border-[#2e2640] rounded-none p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Car className="h-4 w-4 text-purple-400" />
                     <h3 className="font-semibold text-sm text-white">Dealership & Inventory Rules</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-purple-950 text-purple-300 border border-purple-800 font-medium">
                     Car Dealership Only
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-xs mt-3">
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">Driver License Req</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">Yes (Before Test Drive)</div>
                   </div>
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">Trade-In Appraisal</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">Physical Inspection</div>
                   </div>
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">Min Age (Test Drive)</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">18+ with Insurance</div>
                   </div>
@@ -1049,26 +1359,26 @@ export default function AIReceptionist() {
             )}
 
             {isAccounting && (
-              <div id="accounting" className="bg-[#14141f] border border-[#2e2640] rounded-2xl p-5 shadow-lg">
+              <div id="accounting" className="bg-[#14141f] border border-[#2e2640] rounded-none p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-purple-400" />
                     <h3 className="font-semibold text-sm text-white">Tax Filing & Portal Policies</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-purple-950 text-purple-300 border border-purple-800 font-medium">
                     Accounting & Tax Only
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-xs mt-3">
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">Tax Season Cutoff</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">April 15 / Oct 15</div>
                   </div>
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">IRS Notice Review</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">Priority Partner Queue</div>
                   </div>
-                  <div className="p-3 bg-[#181827] rounded-xl border border-[#26263a]">
+                  <div className="p-3 bg-[#181827] rounded-none border border-[#26263a]">
                     <div className="text-slate-400">Document Upload</div>
                     <div className="font-bold text-slate-100 text-sm mt-1">Instant SMS Portal Link</div>
                   </div>
@@ -1077,13 +1387,13 @@ export default function AIReceptionist() {
             )}
 
             {/* Row 5: Routing & Call Handling */}
-            <div id="routing" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg">
+            <div id="routing" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <ArrowRight className="h-4 w-4 text-purple-400" />
                   <h3 className="font-semibold text-sm text-white">Routing & Call Handling</h3>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                   <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                 </span>
               </div>
@@ -1096,7 +1406,7 @@ export default function AIReceptionist() {
                   { intent: 'Urgent / Emergency', destination: 'Transfer to office (protected flow)', icon: AlertCircle },
                   { intent: 'All Other Inquiries', destination: 'AI handles or takes a message', icon: Bot },
                 ].map((route, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#181827] border border-[#262638]">
+                  <div key={i} className="flex items-center justify-between p-2.5 rounded-none bg-[#181827] border border-[#262638]">
                     <div className="flex items-center gap-2 text-slate-300 font-medium">
                       <route.icon className="h-3.5 w-3.5 text-purple-400" />
                       <span>{route.intent}</span>
@@ -1111,13 +1421,13 @@ export default function AIReceptionist() {
             </div>
 
             {/* Row 6: Permissions (What the AI Can Do) */}
-            <div id="permissions" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg">
+            <div id="permissions" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-purple-400" />
                   <h3 className="font-semibold text-sm text-white">Permissions (What the AI Can Do)</h3>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                   <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                 </span>
               </div>
@@ -1142,9 +1452,9 @@ export default function AIReceptionist() {
                     <span className="text-slate-300 font-medium">{item.label}</span>
                     <button
                       onClick={() => setPermissions({ ...permissions, [item.key]: !permissions[item.key] })}
-                      className={`w-9 h-5 rounded-full transition-colors relative ${permissions[item.key] ? 'bg-purple-600' : 'bg-slate-700'}`}
+                      className={`w-9 h-5 rounded-none transition-colors relative cursor-pointer ${permissions[item.key] ? 'bg-purple-600' : 'bg-slate-700'}`}
                     >
-                      <span className={`block w-3.5 h-3.5 rounded-full bg-white transition-transform ${permissions[item.key] ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                      <span className={`block w-3.5 h-3.5 rounded-none bg-white transition-transform ${permissions[item.key] ? 'translate-x-4' : 'translate-x-0.5'}`} />
                     </button>
                   </div>
                 ))}
@@ -1152,13 +1462,13 @@ export default function AIReceptionist() {
             </div>
 
             {/* Row 7: Intents & Phrases */}
-            <div id="phrases" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg">
+            <div id="phrases" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <MessageCircle className="h-4 w-4 text-purple-400" />
                   <h3 className="font-semibold text-sm text-white">Intents & Phrases</h3>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                   <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                 </span>
               </div>
@@ -1190,21 +1500,21 @@ export default function AIReceptionist() {
                       <td className="py-2 text-slate-400">"cancel my appointment", "I can't make it", "can't come"</td>
                     </tr>
                     <tr className="text-slate-200">
-                      <td className="py-2 font-medium">New Patient</td>
+                      <td className="py-2 font-medium">New Patient / Client</td>
                       <td className="py-2 text-slate-400">"I'm a new patient", "how do I get started?", "first time visit"</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              {/* Brand Phrases Chips */}
+              {/* Custom Phrases Chips */}
               <div className="pt-3 border-t border-[#232334]">
-                <div className="text-xs font-medium text-slate-300 mb-2">Custom Phrases / Additional Recognition Phrases (Optional)</div>
+                <div className="text-xs font-medium text-slate-300 mb-2">Custom Phrases / Additional Recognition Phrases</div>
                 <div className="flex flex-wrap items-center gap-2">
                   {customPhrases.map((phrase) => (
-                    <span key={phrase} className="px-3 py-1 rounded-full text-xs bg-purple-950/60 text-purple-200 border border-purple-800/80 flex items-center gap-1.5">
+                    <span key={phrase} className="px-3 py-1 rounded-none text-xs bg-purple-950/60 text-purple-200 border border-purple-800/80 flex items-center gap-1.5">
                       <span>"{phrase}"</span>
-                      <button onClick={() => removePhrase(phrase)} className="hover:text-red-400">
+                      <button onClick={() => removePhrase(phrase)} className="hover:text-rose-400 cursor-pointer">
                         <X className="h-3 w-3" />
                       </button>
                     </span>
@@ -1217,11 +1527,11 @@ export default function AIReceptionist() {
                       value={newPhraseInput}
                       onChange={(e) => setNewPhraseInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addPhrase()}
-                      className="bg-[#1a1a27] text-white text-xs px-2.5 py-1 rounded-lg border border-[#34344d] focus:outline-none focus:border-purple-500 w-32"
+                      className="bg-[#1a1a27] text-white text-xs px-2.5 py-1 rounded-none border border-[#34344d] focus:outline-none focus:border-purple-500 w-32"
                     />
                     <button
                       onClick={addPhrase}
-                      className="p-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white"
+                      className="p-1 rounded-none bg-purple-600 hover:bg-purple-500 text-white cursor-pointer"
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </button>
@@ -1230,17 +1540,17 @@ export default function AIReceptionist() {
               </div>
             </div>
 
-            {/* Row 8: 4 Compact Cards (After-Hours, Payments, Recording, Consent, CRM) */}
+            {/* Row 8: 4 Compact Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* After-Hours & Emergency */}
-              <div id="after-hours" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+              <div id="after-hours" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4 text-purple-400" />
                       <h3 className="font-semibold text-sm text-white">After-Hours & Emergency</h3>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                    <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                       <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
@@ -1262,7 +1572,7 @@ export default function AIReceptionist() {
                   <span className="text-slate-400 text-[11px]">Emergency Keywords:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {emergencyKeywords.map((kw) => (
-                      <span key={kw} className="px-2 py-0.5 rounded text-[10px] bg-red-950/60 text-red-300 border border-red-900/60">
+                      <span key={kw} className="px-2 py-0.5 rounded-none text-[10px] bg-red-950/60 text-red-300 border border-red-900/60">
                         {kw}
                       </span>
                     ))}
@@ -1271,14 +1581,14 @@ export default function AIReceptionist() {
               </div>
 
               {/* Secure Payments */}
-              <div id="payments" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+              <div id="payments" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <CreditCard className="h-4 w-4 text-purple-400" />
                       <h3 className="font-semibold text-sm text-white">Secure Payments</h3>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                    <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                       <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                     </span>
                   </div>
@@ -1290,7 +1600,7 @@ export default function AIReceptionist() {
                         type="checkbox"
                         checked={paymentsConfig.accept_by_phone}
                         onChange={(e) => setPaymentsConfig({ ...paymentsConfig, accept_by_phone: e.target.checked })}
-                        className="rounded border-[#34344e] text-purple-600 focus:ring-0 bg-[#1c1c2b]"
+                        className="rounded-none border-[#34344e] text-purple-600 focus:ring-0 bg-[#1c1c2b]"
                       />
                       <span>Discuss invoice or balance</span>
                     </label>
@@ -1299,7 +1609,7 @@ export default function AIReceptionist() {
                         type="checkbox"
                         checked={paymentsConfig.send_payment_link}
                         onChange={(e) => setPaymentsConfig({ ...paymentsConfig, send_payment_link: e.target.checked })}
-                        className="rounded border-[#34344e] text-purple-600 focus:ring-0 bg-[#1c1c2b]"
+                        className="rounded-none border-[#34344e] text-purple-600 focus:ring-0 bg-[#1c1c2b]"
                       />
                       <span>Send secure payment link (SMS / Email)</span>
                     </label>
@@ -1308,7 +1618,7 @@ export default function AIReceptionist() {
                         type="checkbox"
                         checked={paymentsConfig.confirm_payment_received}
                         onChange={(e) => setPaymentsConfig({ ...paymentsConfig, confirm_payment_received: e.target.checked })}
-                        className="rounded border-[#34344e] text-purple-600 focus:ring-0 bg-[#1c1c2b]"
+                        className="rounded-none border-[#34344e] text-purple-600 focus:ring-0 bg-[#1c1c2b]"
                       />
                       <span>Confirm payment received (if integrated)</span>
                     </label>
@@ -1322,13 +1632,13 @@ export default function AIReceptionist() {
               </div>
 
               {/* Recording & Transcription */}
-              <div id="recording" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg">
+              <div id="recording" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <Disc className="h-4 w-4 text-purple-400" />
                     <h3 className="font-semibold text-sm text-white">Recording & Transcription</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                     <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                   </span>
                 </div>
@@ -1339,18 +1649,18 @@ export default function AIReceptionist() {
                     <span className="text-slate-300">Record calls (with disclosure)</span>
                     <button
                       onClick={() => setRecordingConfig({ ...recordingConfig, record_calls: !recordingConfig.record_calls })}
-                      className={`w-8 h-4 rounded-full transition-colors relative ${recordingConfig.record_calls ? 'bg-purple-600' : 'bg-slate-700'}`}
+                      className={`w-8 h-4 rounded-none transition-colors relative cursor-pointer ${recordingConfig.record_calls ? 'bg-purple-600' : 'bg-slate-700'}`}
                     >
-                      <span className={`block w-3 h-3 rounded-full bg-white transition-transform ${recordingConfig.record_calls ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                      <span className={`block w-3 h-3 rounded-none bg-white transition-transform ${recordingConfig.record_calls ? 'translate-x-4' : 'translate-x-0.5'}`} />
                     </button>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-300">Generate transcripts</span>
                     <button
                       onClick={() => setRecordingConfig({ ...recordingConfig, generate_transcripts: !recordingConfig.generate_transcripts })}
-                      className={`w-8 h-4 rounded-full transition-colors relative ${recordingConfig.generate_transcripts ? 'bg-purple-600' : 'bg-slate-700'}`}
+                      className={`w-8 h-4 rounded-none transition-colors relative cursor-pointer ${recordingConfig.generate_transcripts ? 'bg-purple-600' : 'bg-slate-700'}`}
                     >
-                      <span className={`block w-3 h-3 rounded-full bg-white transition-transform ${recordingConfig.generate_transcripts ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                      <span className={`block w-3 h-3 rounded-none bg-white transition-transform ${recordingConfig.generate_transcripts ? 'translate-x-4' : 'translate-x-0.5'}`} />
                     </button>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1365,13 +1675,13 @@ export default function AIReceptionist() {
               </div>
 
               {/* Consent & Outbound Calling */}
-              <div id="consent" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg">
+              <div id="consent" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <PhoneCall className="h-4 w-4 text-purple-400" />
                     <h3 className="font-semibold text-sm text-white">Consent & Outbound Calling</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                     <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                   </span>
                 </div>
@@ -1390,9 +1700,9 @@ export default function AIReceptionist() {
                     <span className="text-slate-300">Require consent before outbound</span>
                     <button
                       onClick={() => setConsentConfig({ ...consentConfig, require_consent: !consentConfig.require_consent })}
-                      className={`w-8 h-4 rounded-full transition-colors relative ${consentConfig.require_consent ? 'bg-purple-600' : 'bg-slate-700'}`}
+                      className={`w-8 h-4 rounded-none transition-colors relative cursor-pointer ${consentConfig.require_consent ? 'bg-purple-600' : 'bg-slate-700'}`}
                     >
-                      <span className={`block w-3 h-3 rounded-full bg-white transition-transform ${consentConfig.require_consent ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                      <span className={`block w-3 h-3 rounded-none bg-white transition-transform ${consentConfig.require_consent ? 'translate-x-4' : 'translate-x-0.5'}`} />
                     </button>
                   </div>
                   <div className="flex items-center gap-2 text-slate-300 pt-1">
@@ -1404,13 +1714,13 @@ export default function AIReceptionist() {
             </div>
 
             {/* Row 9: CRM & Lead Behavior */}
-            <div id="crm" className="bg-[#14141f] border border-[#242436] rounded-2xl p-5 shadow-lg">
+            <div id="crm" className="bg-[#14141f] border border-[#242436] rounded-none p-5 shadow-lg">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <FolderCheck className="h-4 w-4 text-purple-400" />
                   <h3 className="font-semibold text-sm text-white">CRM & Lead Behavior</h3>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
+                <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-medium">
                   <CheckCircle2 size={11} className="text-emerald-400 inline mr-1" />Configured
                 </span>
               </div>
@@ -1421,36 +1731,36 @@ export default function AIReceptionist() {
                   <span className="text-slate-300">Create lead only for new prospects</span>
                   <button
                     onClick={() => setCrmLeadConfig({ ...crmLeadConfig, create_new_lead_unknown: !crmLeadConfig.create_new_lead_unknown })}
-                    className={`w-8 h-4 rounded-full transition-colors relative ${crmLeadConfig.create_new_lead_unknown ? 'bg-purple-600' : 'bg-slate-700'}`}
+                    className={`w-8 h-4 rounded-none transition-colors relative cursor-pointer ${crmLeadConfig.create_new_lead_unknown ? 'bg-purple-600' : 'bg-slate-700'}`}
                   >
-                    <span className={`block w-3 h-3 rounded-full bg-white transition-transform ${crmLeadConfig.create_new_lead_unknown ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    <span className={`block w-3 h-3 rounded-none bg-white transition-transform ${crmLeadConfig.create_new_lead_unknown ? 'translate-x-4' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
                 <div className="flex items-center justify-between py-1 border-b border-[#202030]">
                   <span className="text-slate-300">Update existing contacts (if identified)</span>
                   <button
                     onClick={() => setCrmLeadConfig({ ...crmLeadConfig, update_existing_contacts: !crmLeadConfig.update_existing_contacts })}
-                    className={`w-8 h-4 rounded-full transition-colors relative ${crmLeadConfig.update_existing_contacts ? 'bg-purple-600' : 'bg-slate-700'}`}
+                    className={`w-8 h-4 rounded-none transition-colors relative cursor-pointer ${crmLeadConfig.update_existing_contacts ? 'bg-purple-600' : 'bg-slate-700'}`}
                   >
-                    <span className={`block w-3 h-3 rounded-full bg-white transition-transform ${crmLeadConfig.update_existing_contacts ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    <span className={`block w-3 h-3 rounded-none bg-white transition-transform ${crmLeadConfig.update_existing_contacts ? 'translate-x-4' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
                 <div className="flex items-center justify-between py-1">
                   <span className="text-slate-300">Tag and source: AI Receptionist</span>
                   <button
                     onClick={() => setCrmLeadConfig({ ...crmLeadConfig, tag_source_receptionist: !crmLeadConfig.tag_source_receptionist })}
-                    className={`w-8 h-4 rounded-full transition-colors relative ${crmLeadConfig.tag_source_receptionist ? 'bg-purple-600' : 'bg-slate-700'}`}
+                    className={`w-8 h-4 rounded-none transition-colors relative cursor-pointer ${crmLeadConfig.tag_source_receptionist ? 'bg-purple-600' : 'bg-slate-700'}`}
                   >
-                    <span className={`block w-3 h-3 rounded-full bg-white transition-transform ${crmLeadConfig.tag_source_receptionist ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    <span className={`block w-3 h-3 rounded-none bg-white transition-transform ${crmLeadConfig.tag_source_receptionist ? 'translate-x-4' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
                 <div className="flex items-center justify-between py-1">
                   <span className="text-slate-300">Avoid duplicate contacts</span>
                   <button
                     onClick={() => setCrmLeadConfig({ ...crmLeadConfig, avoid_duplicates: !crmLeadConfig.avoid_duplicates })}
-                    className={`w-8 h-4 rounded-full transition-colors relative ${crmLeadConfig.avoid_duplicates ? 'bg-purple-600' : 'bg-slate-700'}`}
+                    className={`w-8 h-4 rounded-none transition-colors relative cursor-pointer ${crmLeadConfig.avoid_duplicates ? 'bg-purple-600' : 'bg-slate-700'}`}
                   >
-                    <span className={`block w-3 h-3 rounded-full bg-white transition-transform ${crmLeadConfig.avoid_duplicates ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    <span className={`block w-3 h-3 rounded-none bg-white transition-transform ${crmLeadConfig.avoid_duplicates ? 'translate-x-4' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
               </div>
@@ -1459,7 +1769,7 @@ export default function AIReceptionist() {
 
           {/* Right Column: Live Interactive Test Receptionist Panel (4 cols on lg) */}
           <div id="test-panel" className="lg:col-span-4">
-            <div className="sticky top-24 bg-[#141421] border border-[#2b2b40] rounded-2xl p-5 shadow-2xl flex flex-col h-[calc(100vh-130px)]">
+            <div className="sticky top-24 bg-[#141421] border border-[#2b2b40] rounded-none p-5 shadow-2xl flex flex-col h-[calc(100vh-130px)]">
               {/* Header */}
               <div className="pb-3 border-b border-[#252538]">
                 <div className="flex items-center justify-between mb-1">
@@ -1467,17 +1777,17 @@ export default function AIReceptionist() {
                     <Bot className="h-5 w-5 text-purple-400" />
                     <h3 className="font-bold text-base text-white">Test AI Receptionist</h3>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded-none bg-purple-950 text-purple-300 border border-purple-800 font-medium">
                     Live Simulator
                   </span>
                 </div>
-                <p className="text-xs text-slate-400">Try a real conversation to verify the configuration.</p>
+                <p className="text-xs text-slate-400">Try a real conversation with {activeBusinessName}'s assistant.</p>
 
                 {/* Mode Tabs */}
-                <div className="flex items-center gap-2 mt-3 bg-[#1b1b2a] p-1 rounded-xl">
+                <div className="flex items-center gap-2 mt-3 bg-[#1b1b2a] p-1 rounded-none">
                   <button
                     onClick={() => setSimulatorMode('call')}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition ${
+                    className={`flex-1 py-1.5 rounded-none text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer ${
                       simulatorMode === 'call'
                         ? 'bg-purple-600 text-white shadow-md'
                         : 'text-slate-400 hover:text-slate-200'
@@ -1488,7 +1798,7 @@ export default function AIReceptionist() {
                   </button>
                   <button
                     onClick={() => setSimulatorMode('chat')}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition ${
+                    className={`flex-1 py-1.5 rounded-none text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer ${
                       simulatorMode === 'chat'
                         ? 'bg-purple-600 text-white shadow-md'
                         : 'text-slate-400 hover:text-slate-200'
@@ -1504,13 +1814,13 @@ export default function AIReceptionist() {
               <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1 scrollbar-thin">
                 {/* Active Test Diagnostics Card */}
                 {latestResult && (
-                  <div className="bg-[#1b1b2a] border border-[#303046] rounded-xl p-3.5 space-y-2 text-xs">
+                  <div className="bg-[#1b1b2a] border border-[#303046] rounded-none p-3.5 space-y-2 text-xs">
                     <div className="flex items-center justify-between pb-2 border-b border-[#27273a]">
                       <span className="font-semibold text-white flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5 text-purple-400" />
                         Test Result
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-medium flex items-center gap-1">
+                      <span className="text-[10px] px-2 py-0.5 rounded-none bg-emerald-950 text-emerald-300 border border-emerald-800 font-medium flex items-center gap-1">
                         <Check className="h-3 w-3" /> Success
                       </span>
                     </div>
@@ -1518,7 +1828,7 @@ export default function AIReceptionist() {
                     <div className="space-y-1.5">
                       <div className="flex items-start justify-between">
                         <span className="text-slate-400">Detected Intent:</span>
-                        <span className="font-medium text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded text-[11px] border border-purple-800/60">
+                        <span className="font-medium text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded-none text-[11px] border border-purple-800/60">
                           {latestResult.detected_intent}
                         </span>
                       </div>
@@ -1542,7 +1852,7 @@ export default function AIReceptionist() {
                     {/* AI Response Quote */}
                     <div className="pt-2 border-t border-[#27273a] mt-2">
                       <span className="text-[11px] text-slate-400 font-medium">AI Response (to Caller):</span>
-                      <div className="mt-1 bg-[#151522] p-2.5 rounded-lg border border-[#252538] text-slate-200 text-xs italic leading-relaxed">
+                      <div className="mt-1 bg-[#151522] p-2.5 rounded-none border border-[#252538] text-slate-200 text-xs italic leading-relaxed">
                         "{latestResult.reply}"
                       </div>
                     </div>
@@ -1562,7 +1872,7 @@ export default function AIReceptionist() {
                         key={i}
                         onClick={() => runTestSimulation(sample.query)}
                         disabled={testSending}
-                        className="w-full p-2.5 rounded-xl bg-[#181827] hover:bg-[#202033] border border-[#252538] hover:border-purple-500/40 text-left text-xs transition flex items-center justify-between group"
+                        className="w-full p-2.5 rounded-none bg-[#181827] hover:bg-[#202033] border border-[#252538] hover:border-purple-500/40 text-left text-xs transition flex items-center justify-between group cursor-pointer"
                       >
                         <span className="text-slate-300 group-hover:text-white truncate pr-2">
                           "{sample.query}"
@@ -1580,7 +1890,7 @@ export default function AIReceptionist() {
                     {conversationHistory.slice(-4).map((msg, idx) => (
                       <div
                         key={idx}
-                        className={`p-2.5 rounded-xl text-xs ${
+                        className={`p-2.5 rounded-none text-xs ${
                           msg.sender === 'user'
                             ? 'bg-[#222236] ml-4 text-slate-200'
                             : 'bg-purple-950/40 mr-4 border border-purple-900/40 text-purple-200'
@@ -1610,13 +1920,13 @@ export default function AIReceptionist() {
                     type="text"
                     value={testQueryInput}
                     onChange={(e) => setTestQueryInput(e.target.value)}
-                    placeholder="Type a test message (e.g. Do you take Delta Dental?)..."
-                    className="flex-1 bg-[#1c1c2b] text-white text-xs px-3 py-2.5 rounded-xl border border-[#35354e] focus:outline-none focus:border-purple-500 placeholder:text-slate-500"
+                    placeholder={`Ask ${callSettings?.assistant_name || 'Sarah'} anything about ${activeBusinessName}...`}
+                    className="flex-1 bg-[#1c1c2b] text-white text-xs px-3 py-2.5 rounded-none border border-[#35354e] focus:outline-none focus:border-purple-500 placeholder:text-slate-500"
                   />
                   <button
                     type="submit"
                     disabled={testSending || !testQueryInput.trim()}
-                    className="p-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white transition shadow-md shadow-purple-900/30"
+                    className="p-2.5 rounded-none bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white transition shadow-md shadow-purple-900/30 cursor-pointer"
                   >
                     {testSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </button>
@@ -1627,7 +1937,836 @@ export default function AIReceptionist() {
         </div>
       </main>
 
-      {/* ── Template Picker Modal ── */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          1. EDIT BUSINESS PROFILE & HOURS MODAL
+          ══════════════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {businessModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-[#151522] border border-[#2b2b40] rounded-none max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#252538]">
+                <div className="flex items-center gap-2">
+                  <Building className="h-5 w-5 text-purple-400" />
+                  <h3 className="font-bold text-base text-white">Edit Business Profile & Operating Hours</h3>
+                </div>
+                <button onClick={() => setBusinessModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveBusinessProfile} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Business Name <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={businessForm.business_name}
+                    onChange={(e) => setBusinessForm({ ...businessForm, business_name: e.target.value })}
+                    placeholder="e.g. Acme Legal Counsel, Sunrise Dental Clinic"
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">This name is dynamically used by the AI receptionist on every call and greeting.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Contact Phone Number</label>
+                    <input
+                      type="text"
+                      value={businessForm.phone_number}
+                      onChange={(e) => setBusinessForm({ ...businessForm, phone_number: e.target.value })}
+                      placeholder="e.g. (555) 234-5678"
+                      className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Website URL</label>
+                    <input
+                      type="text"
+                      value={businessForm.website}
+                      onChange={(e) => setBusinessForm({ ...businessForm, website: e.target.value })}
+                      placeholder="e.g. https://mybusiness.com"
+                      className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Physical Address / Office Location</label>
+                  <textarea
+                    rows={2}
+                    value={businessForm.office_address_text}
+                    onChange={(e) => setBusinessForm({ ...businessForm, office_address_text: e.target.value })}
+                    placeholder="e.g. 742 Evergreen Terrace, Suite 300, Springfield, IL 62704"
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                {/* Operating Hours Configuration */}
+                <div className="p-3.5 bg-[#1b1b2a] border border-[#2b2b3f] space-y-3">
+                  <div className="flex items-center gap-2 text-purple-300 font-semibold text-xs">
+                    <Clock className="h-4 w-4" />
+                    <span>Operating Schedule for AI Call Handling</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-slate-400 mb-1">Days of Operation</label>
+                      <select
+                        value={businessForm.days_type}
+                        onChange={(e) => setBusinessForm({ ...businessForm, days_type: e.target.value })}
+                        className="w-full bg-[#14141f] text-white px-2.5 py-1.5 rounded-none border border-[#35354e] focus:outline-none focus:border-purple-500 cursor-pointer"
+                      >
+                        <option value="mon_fri">Mon - Fri (Standard)</option>
+                        <option value="mon_sat">Mon - Sat (6 Days)</option>
+                        <option value="all_week">Every Day (7 Days)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 mb-1">Opens At</label>
+                      <select
+                        value={businessForm.start_hour}
+                        onChange={(e) => setBusinessForm({ ...businessForm, start_hour: Number(e.target.value) })}
+                        className="w-full bg-[#14141f] text-white px-2.5 py-1.5 rounded-none border border-[#35354e] focus:outline-none focus:border-purple-500 cursor-pointer"
+                      >
+                        {[7, 8, 9, 10].map((h) => (
+                          <option key={h} value={h}>{h}:00 AM</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 mb-1">Closes At</label>
+                      <select
+                        value={businessForm.end_hour}
+                        onChange={(e) => setBusinessForm({ ...businessForm, end_hour: Number(e.target.value) })}
+                        className="w-full bg-[#14141f] text-white px-2.5 py-1.5 rounded-none border border-[#35354e] focus:outline-none focus:border-purple-500 cursor-pointer"
+                      >
+                        {[16, 17, 18, 19, 20].map((h) => (
+                          <option key={h} value={h}>{h - 12}:00 PM</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2 border-t border-[#252538]">
+                  <button
+                    type="button"
+                    onClick={() => setBusinessModalOpen(false)}
+                    className="px-4 py-2 rounded-none border border-[#35354e] hover:bg-[#202033] text-slate-300 font-medium text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-5 py-2 rounded-none bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition flex items-center gap-2 cursor-pointer shadow-lg shadow-purple-900/40"
+                  >
+                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                    Save Business Info
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          2. EDIT INBOUND CALL SCRIPT MODAL
+          ══════════════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {inboundScriptModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-[#151522] border border-[#2b2b40] rounded-none max-w-xl w-full p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#252538]">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-purple-400" />
+                  <h3 className="font-bold text-base text-white">Edit Inbound Call Script</h3>
+                </div>
+                <button onClick={() => setInboundScriptModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-slate-300 font-medium">Greeting Text</label>
+                    <span className="text-[11px] text-slate-500">{inboundScriptText.length} characters</span>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={inboundScriptText}
+                    onChange={(e) => setInboundScriptText(e.target.value)}
+                    placeholder={`Thank you for calling ${activeBusinessName}. This is our virtual receptionist. How can I help you today?`}
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2.5 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500 leading-relaxed font-sans"
+                  />
+                </div>
+
+                {/* Quick Variable Insert Tags */}
+                <div>
+                  <span className="text-[11px] text-slate-400 block mb-1">Click to insert dynamic variables:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { tag: '{business}', label: 'Business Name', val: activeBusinessName },
+                      { tag: '{name}', label: 'AI Name', val: callSettings?.assistant_name || 'Sarah' },
+                      { tag: '{hours}', label: 'Operating Hours', val: activeBusinessHours },
+                      { tag: '{phone}', label: 'Phone', val: activeBusinessPhone },
+                    ].map((v) => (
+                      <button
+                        key={v.tag}
+                        type="button"
+                        onClick={() => setInboundScriptText((prev) => `${prev} ${v.tag}`)}
+                        className="px-2 py-0.5 bg-[#202030] hover:bg-purple-950/60 border border-[#35354e] hover:border-purple-500 text-purple-300 rounded-none text-[11px] font-mono cursor-pointer transition"
+                      >
+                        + {v.tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live Audition Preview */}
+                <div className="p-3 bg-[#181827] border border-[#2b2b3f] space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-purple-400">Caller Audition Preview</span>
+                  <p className="text-xs italic text-slate-300 leading-relaxed">
+                    "{inboundScriptText
+                      .replace(/\{business\}/g, activeBusinessName)
+                      .replace(/\{name\}/g, callSettings?.assistant_name || 'Sarah')
+                      .replace(/\{hours\}/g, activeBusinessHours)
+                      .replace(/\{phone\}/g, activeBusinessPhone)}"
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-between items-center border-t border-[#252538]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInboundScriptText(`Thank you for calling ${activeBusinessName}. This is our virtual receptionist ${callSettings?.assistant_name || 'Sarah'}. How can I assist you today?`);
+                  }}
+                  className="text-xs text-slate-400 hover:text-purple-300 underline cursor-pointer"
+                >
+                  Reset to Default Template
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInboundScriptModalOpen(false)}
+                    className="px-4 py-2 rounded-none border border-[#35354e] hover:bg-[#202033] text-slate-300 font-medium text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCallSettings((prev) => ({ ...prev, greeting_inbound: inboundScriptText }));
+                      setInboundScriptModalOpen(false);
+                    }}
+                    className="px-5 py-2 rounded-none bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition cursor-pointer shadow-lg shadow-purple-900/40"
+                  >
+                    Save Inbound Script
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          3. EDIT OUTBOUND CALL SCRIPT MODAL
+          ══════════════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {outboundScriptModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-[#151522] border border-[#2b2b40] rounded-none max-w-xl w-full p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#252538]">
+                <div className="flex items-center gap-2">
+                  <PhoneOutgoing className="h-5 w-5 text-purple-400" />
+                  <h3 className="font-bold text-base text-white">Edit Outbound Call Script</h3>
+                </div>
+                <button onClick={() => setOutboundScriptModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-slate-300 font-medium">Outbound Reminder / Follow-up Script</label>
+                    <span className="text-[11px] text-slate-500">{outboundScriptText.length} characters</span>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={outboundScriptText}
+                    onChange={(e) => setOutboundScriptText(e.target.value)}
+                    placeholder={`Hi {first_name}, this is ${activeBusinessName} with a quick reminder about your appointment on {date} at {time}. Please let us know if you need to reschedule.`}
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2.5 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500 leading-relaxed font-sans"
+                  />
+                </div>
+
+                {/* Variable chips */}
+                <div>
+                  <span className="text-[11px] text-slate-400 block mb-1">Click to insert dynamic variables:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { tag: '{first_name}', label: 'Client First Name' },
+                      { tag: '{business}', label: 'Business Name' },
+                      { tag: '{date}', label: 'Appointment Date' },
+                      { tag: '{time}', label: 'Appointment Time' },
+                      { tag: '{service}', label: 'Service Name' },
+                    ].map((v) => (
+                      <button
+                        key={v.tag}
+                        type="button"
+                        onClick={() => setOutboundScriptText((prev) => `${prev} ${v.tag}`)}
+                        className="px-2 py-0.5 bg-[#202030] hover:bg-purple-950/60 border border-[#35354e] hover:border-purple-500 text-purple-300 rounded-none text-[11px] font-mono cursor-pointer transition"
+                      >
+                        + {v.tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live Preview */}
+                <div className="p-3 bg-[#181827] border border-[#2b2b3f] space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-purple-400">Caller Audition Preview</span>
+                  <p className="text-xs italic text-slate-300 leading-relaxed">
+                    "{outboundScriptText
+                      .replace(/\{first_name\}/g, 'Alex')
+                      .replace(/\{business\}/g, activeBusinessName)
+                      .replace(/\{date\}/g, 'tomorrow')
+                      .replace(/\{time\}/g, '2:30 PM')
+                      .replace(/\{service\}/g, 'Consultation')}"
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-between items-center border-t border-[#252538]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOutboundScriptText(`Hi {first_name}, this is ${activeBusinessName} with a quick reminder about your appointment on {date} at {time}. Please let us know if you need to reschedule.`);
+                  }}
+                  className="text-xs text-slate-400 hover:text-purple-300 underline cursor-pointer"
+                >
+                  Reset to Default Template
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOutboundScriptModalOpen(false)}
+                    className="px-4 py-2 rounded-none border border-[#35354e] hover:bg-[#202033] text-slate-300 font-medium text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCallSettings((prev) => ({ ...prev, greeting_outbound: outboundScriptText }));
+                      setOutboundScriptModalOpen(false);
+                    }}
+                    className="px-5 py-2 rounded-none bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition cursor-pointer shadow-lg shadow-purple-900/40"
+                  >
+                    Save Outbound Script
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          4. MANAGE BUSINESS KNOWLEDGE & POLICIES MODAL
+          ══════════════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {knowledgeModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-[#151522] border border-[#2b2b40] rounded-none max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#252538]">
+                <div className="flex items-center gap-2">
+                  <Database className="h-5 w-5 text-purple-400" />
+                  <h3 className="font-bold text-base text-white">Manage Business Knowledge & FAQs</h3>
+                </div>
+                <button onClick={() => setKnowledgeModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-400">
+                The AI receptionist answers caller questions strictly from this knowledge base, your services list, and active business hours.
+              </p>
+
+              {/* Template Quick Insert Helpers */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-slate-400 block font-medium">Quick-Add Standard Sections:</span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const snippet = `\n\n[LOCATION & PARKING]\nWe are located at ${activeBusinessAddress || '742 Evergreen Terrace'}. Free parking is available in the rear lot, and street parking is available along the front.`;
+                      setKnowledgeText((prev) => prev + snippet);
+                    }}
+                    className="px-2.5 py-1 bg-[#1d1d2b] hover:bg-purple-950/60 border border-[#33334c] hover:border-purple-500 text-purple-300 rounded-none text-xs cursor-pointer transition"
+                  >
+                    + Parking & Directions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const snippet = `\n\n[CANCELLATION POLICY]\nWe require at least 24 hours notice for any appointment cancellations or reschedules. Late cancellations with less than 24 hours notice may incur a standard $50 rebooking fee.`;
+                      setKnowledgeText((prev) => prev + snippet);
+                    }}
+                    className="px-2.5 py-1 bg-[#1d1d2b] hover:bg-purple-950/60 border border-[#33334c] hover:border-purple-500 text-purple-300 rounded-none text-xs cursor-pointer transition"
+                  >
+                    + Cancellation Policy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const snippet = `\n\n[PAYMENT & PRICING]\nWe accept major credit cards (Visa, MasterCard, Amex), debit cards, and secure online SMS checkout links. We also offer flexible in-house payment options.`;
+                      setKnowledgeText((prev) => prev + snippet);
+                    }}
+                    className="px-2.5 py-1 bg-[#1d1d2b] hover:bg-purple-950/60 border border-[#33334c] hover:border-purple-500 text-purple-300 rounded-none text-xs cursor-pointer transition"
+                  >
+                    + Payment & Pricing
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const snippet = `\n\n[NEW CLIENT INTAKE]\nNew clients should arrive 10 minutes prior to their scheduled appointment to verify registration, or complete our quick mobile intake link sent by SMS.`;
+                      setKnowledgeText((prev) => prev + snippet);
+                    }}
+                    className="px-2.5 py-1 bg-[#1d1d2b] hover:bg-purple-950/60 border border-[#33334c] hover:border-purple-500 text-purple-300 rounded-none text-xs cursor-pointer transition"
+                  >
+                    + New Client Intake
+                  </button>
+                </div>
+              </div>
+
+              {/* Large Knowledge Base Editor */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-slate-300 font-medium text-xs">Knowledge Base & Custom Rules</label>
+                  <span className="text-[11px] text-slate-500">{knowledgeText.length} / 8000 chars</span>
+                </div>
+                <textarea
+                  rows={10}
+                  value={knowledgeText}
+                  onChange={(e) => setKnowledgeText(e.target.value)}
+                  placeholder="Enter business policies, detailed FAQs, directions, pricing notes, or special instructions here..."
+                  className="w-full bg-[#1b1b2a] text-white px-3 py-2.5 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500 leading-relaxed font-mono text-xs"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-[#252538]">
+                <button
+                  type="button"
+                  onClick={() => setKnowledgeModalOpen(false)}
+                  className="px-4 py-2 rounded-none border border-[#35354e] hover:bg-[#202033] text-slate-300 font-medium text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCallSettings((prev) => ({ ...prev, knowledge_base: knowledgeText }));
+                    setKnowledgeModalOpen(false);
+                  }}
+                  className="px-5 py-2 rounded-none bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition cursor-pointer shadow-lg shadow-purple-900/40"
+                >
+                  Save Knowledge
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          5. ADD / EDIT SERVICE MODAL
+          ══════════════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {serviceModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-[#151522] border border-[#2b2b40] rounded-none max-w-md w-full p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#252538]">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-purple-400" />
+                  <h3 className="font-bold text-base text-white">
+                    {editingService ? 'Edit Service' : 'Add New Service'}
+                  </h3>
+                </div>
+                <button onClick={() => setServiceModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!serviceForm.name.trim()) return;
+                  if (editingService) {
+                    setServicesList(servicesList.map((s) => (s.id === editingService.id ? { ...s, ...serviceForm } : s)));
+                  } else {
+                    setServicesList([
+                      ...servicesList,
+                      {
+                        id: `serv_${Date.now()}`,
+                        ...serviceForm,
+                      },
+                    ]);
+                  }
+                  setServiceModalOpen(false);
+                }}
+                className="space-y-4 text-xs"
+              >
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Service Name <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={serviceForm.name}
+                    onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
+                    placeholder="e.g. Routine Cleaning, Case Review, AC Diagnostic"
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Duration (Minutes)</label>
+                    <select
+                      value={serviceForm.duration_minutes}
+                      onChange={(e) => setServiceForm({ ...serviceForm, duration_minutes: Number(e.target.value) })}
+                      className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500 cursor-pointer"
+                    >
+                      <option value={15}>15 Minutes</option>
+                      <option value={30}>30 Minutes</option>
+                      <option value={45}>45 Minutes</option>
+                      <option value={60}>60 Minutes (1 hr)</option>
+                      <option value={90}>90 Minutes (1.5 hr)</option>
+                      <option value={120}>120 Minutes (2 hr)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Standard Price ($)</label>
+                    <input
+                      type="text"
+                      value={serviceForm.price}
+                      onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value })}
+                      placeholder="e.g. 129 or Waived"
+                      className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Assigned Provider / Role</label>
+                  <input
+                    type="text"
+                    value={serviceForm.provider_role}
+                    onChange={(e) => setServiceForm({ ...serviceForm, provider_role: e.target.value })}
+                    placeholder="e.g. Dentist (Any), Senior Litigator, Lead Tech"
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 bg-[#1b1b2a] border border-[#2b2b40]">
+                  <span className="text-slate-300">Active for Online & Voice Booking</span>
+                  <input
+                    type="checkbox"
+                    checked={serviceForm.active}
+                    onChange={(e) => setServiceForm({ ...serviceForm, active: e.target.checked })}
+                    className="rounded-none text-purple-600 focus:ring-0 bg-[#14141f] border-[#35354e] cursor-pointer"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2 border-t border-[#252538]">
+                  <button
+                    type="button"
+                    onClick={() => setServiceModalOpen(false)}
+                    className="px-4 py-2 rounded-none border border-[#35354e] hover:bg-[#202033] text-slate-300 font-medium text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-none bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition cursor-pointer shadow-lg shadow-purple-900/40"
+                  >
+                    {editingService ? 'Save Service' : 'Add Service'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          6. ADD / EDIT STAFF MEMBER MODAL
+          ══════════════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {staffModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-[#151522] border border-[#2b2b40] rounded-none max-w-md w-full p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#252538]">
+                <div className="flex items-center gap-2">
+                  <Users2 className="h-5 w-5 text-purple-400" />
+                  <h3 className="font-bold text-base text-white">
+                    {editingStaff ? 'Edit Team Member' : 'Add Team Member'}
+                  </h3>
+                </div>
+                <button onClick={() => setStaffModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!staffForm.name.trim()) return;
+                  if (editingStaff) {
+                    setStaffList(staffList.map((st) => (st.id === editingStaff.id ? { ...st, ...staffForm } : st)));
+                  } else {
+                    setStaffList([
+                      ...staffList,
+                      {
+                        id: `staff_${Date.now()}`,
+                        ...staffForm,
+                      },
+                    ]);
+                  }
+                  setStaffModalOpen(false);
+                }}
+                className="space-y-4 text-xs"
+              >
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Staff / Team Member Name <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={staffForm.name}
+                    onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })}
+                    placeholder="e.g. Dr. Emily Smith, Arthur Vance, Front Desk"
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Role / Title</label>
+                  <input
+                    type="text"
+                    value={staffForm.role}
+                    onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
+                    placeholder="e.g. Lead Specialist, Managing Partner, Intake Coordinator"
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Department / Routing Tag</label>
+                  <input
+                    type="text"
+                    value={staffForm.department}
+                    onChange={(e) => setStaffForm({ ...staffForm, department: e.target.value })}
+                    placeholder="e.g. Scheduling, Urgent Escalations, Billing"
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 bg-[#1b1b2a] border border-[#2b2b40]">
+                  <span className="text-slate-300">Active for Call Transfers & Routing</span>
+                  <input
+                    type="checkbox"
+                    checked={staffForm.active}
+                    onChange={(e) => setStaffForm({ ...staffForm, active: e.target.checked })}
+                    className="rounded-none text-purple-600 focus:ring-0 bg-[#14141f] border-[#35354e] cursor-pointer"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2 border-t border-[#252538]">
+                  <button
+                    type="button"
+                    onClick={() => setStaffModalOpen(false)}
+                    className="px-4 py-2 rounded-none border border-[#35354e] hover:bg-[#202033] text-slate-300 font-medium text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-none bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition cursor-pointer shadow-lg shadow-purple-900/40"
+                  >
+                    {editingStaff ? 'Save Member' : 'Add Member'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          7. ADD / EDIT INSURANCE PLAN MODAL
+          ══════════════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {insuranceModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-[#151522] border border-[#2b2b40] rounded-none max-w-md w-full p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#252538]">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-purple-400" />
+                  <h3 className="font-bold text-base text-white">
+                    {editingPlan ? 'Edit Insurance Plan' : 'Add Accepted Insurance Plan'}
+                  </h3>
+                </div>
+                <button onClick={() => setInsuranceModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!insuranceForm.payer.trim()) return;
+                  if (editingPlan) {
+                    setInsurancePlans(insurancePlans.map((p) => (p.id === editingPlan.id ? { ...p, ...insuranceForm } : p)));
+                  } else {
+                    setInsurancePlans([
+                      ...insurancePlans,
+                      {
+                        id: `ins_${Date.now()}`,
+                        ...insuranceForm,
+                      },
+                    ]);
+                  }
+                  setInsuranceModalOpen(false);
+                }}
+                className="space-y-4 text-xs"
+              >
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Insurance Payer / Carrier <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={insuranceForm.payer}
+                    onChange={(e) => setInsuranceForm({ ...insuranceForm, payer: e.target.value })}
+                    placeholder="e.g. Delta Dental, Aetna, Blue Cross Blue Shield"
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Plan / Type</label>
+                    <input
+                      type="text"
+                      value={insuranceForm.plan_name}
+                      onChange={(e) => setInsuranceForm({ ...insuranceForm, plan_name: e.target.value })}
+                      placeholder="e.g. PPO, Premier, HMO"
+                      className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Network Status</label>
+                    <select
+                      value={insuranceForm.network_status}
+                      onChange={(e) => setInsuranceForm({ ...insuranceForm, network_status: e.target.value })}
+                      className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500 cursor-pointer"
+                    >
+                      <option value="in_network">In-Network</option>
+                      <option value="plan_dependent">Plan Dependent</option>
+                      <option value="out_of_network">Out-of-Network</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 bg-[#1b1b2a] border border-[#2b2b40]">
+                  <span className="text-slate-300">Requires Eligibility Verification</span>
+                  <input
+                    type="checkbox"
+                    checked={insuranceForm.verification_required}
+                    onChange={(e) => setInsuranceForm({ ...insuranceForm, verification_required: e.target.checked })}
+                    className="rounded-none text-purple-600 focus:ring-0 bg-[#14141f] border-[#35354e] cursor-pointer"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2 border-t border-[#252538]">
+                  <button
+                    type="button"
+                    onClick={() => setInsuranceModalOpen(false)}
+                    className="px-4 py-2 rounded-none border border-[#35354e] hover:bg-[#202033] text-slate-300 font-medium text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-none bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition cursor-pointer shadow-lg shadow-purple-900/40"
+                  >
+                    {editingPlan ? 'Save Plan' : 'Add Plan'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          8. TEMPLATE PICKER MODAL
+          ══════════════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {templateModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -1635,20 +2774,20 @@ export default function AIReceptionist() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#151522] border border-[#2b2b40] rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+              className="bg-[#151522] border border-[#2b2b40] rounded-none max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between pb-3 border-b border-[#252538]">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-purple-400" />
                   <h3 className="font-bold text-base text-white">Select Business Industry Template</h3>
                 </div>
-                <button onClick={() => setTemplateModalOpen(false)} className="text-slate-400 hover:text-white">
+                <button onClick={() => setTemplateModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
               <p className="text-xs text-slate-400">
-                Choose your industry to automatically load standard intents, service categories, staff roles, and phrasing. The master UI layout remains consistent across all types.
+                Choose your industry to automatically load standard intents, service categories, staff roles, and phrasing.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
@@ -1673,14 +2812,14 @@ export default function AIReceptionist() {
                         applyIndustryTemplate(tmpl.key, null, false);
                         setTemplateModalOpen(false);
                       }}
-                      className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                      className={`p-3.5 rounded-none border text-left transition flex flex-col justify-between cursor-pointer ${
                         selectedIndustry === tmpl.key
                           ? 'bg-purple-950/40 border-purple-500 shadow-md shadow-purple-900/20'
                           : 'bg-[#1a1a29] border-[#29293e] hover:border-[#3d3d5c] hover:bg-[#202033]'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1.5">
-                        <div className="w-6 h-6 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+                        <div className="w-6 h-6 rounded-none bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
                           <Icon size={14} />
                         </div>
                         <span className="font-semibold text-white text-xs">{tmpl.name}</span>
@@ -1695,7 +2834,9 @@ export default function AIReceptionist() {
         )}
       </AnimatePresence>
 
-      {/* ── Voice & Name Modal ── */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          9. VOICE & PERSONA MODAL
+          ══════════════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {voiceModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -1703,14 +2844,14 @@ export default function AIReceptionist() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#151522] border border-[#2b2b40] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4"
+              className="bg-[#151522] border border-[#2b2b40] rounded-none max-w-lg w-full p-6 shadow-2xl space-y-4"
             >
               <div className="flex items-center justify-between pb-3 border-b border-[#252538]">
                 <div className="flex items-center gap-2">
                   <Mic className="h-5 w-5 text-purple-400" />
                   <h3 className="font-bold text-base text-white">AI Voice & Persona Setup</h3>
                 </div>
-                <button onClick={() => setVoiceModalOpen(false)} className="text-slate-400 hover:text-white">
+                <button onClick={() => setVoiceModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -1723,7 +2864,7 @@ export default function AIReceptionist() {
                     value={callSettings?.assistant_name || ''}
                     onChange={(e) => setCallSettings({ ...callSettings, assistant_name: e.target.value })}
                     placeholder="e.g. Sarah"
-                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-xl border border-[#303046] focus:outline-none focus:border-purple-500"
+                    className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
@@ -1734,7 +2875,7 @@ export default function AIReceptionist() {
                       <div
                         key={voice.id}
                         onClick={() => setCallSettings({ ...callSettings, voice_id: voice.id })}
-                        className={`p-3 rounded-xl border cursor-pointer transition flex items-center justify-between ${
+                        className={`p-3 rounded-none border cursor-pointer transition flex items-center justify-between ${
                           callSettings?.voice_id === voice.id
                             ? 'bg-purple-950/40 border-purple-500'
                             : 'bg-[#1b1b2a] border-[#2b2b40] hover:bg-[#202033]'
@@ -1751,10 +2892,10 @@ export default function AIReceptionist() {
                 </div>
               </div>
 
-              <div className="pt-3 flex justify-end gap-2">
+              <div className="pt-3 flex justify-end gap-2 border-t border-[#252538]">
                 <button
                   onClick={() => setVoiceModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition"
+                  className="px-5 py-2 rounded-none bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition cursor-pointer"
                 >
                   Done
                 </button>
