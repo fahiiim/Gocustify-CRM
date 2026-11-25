@@ -430,8 +430,8 @@ class DashboardService:
         }
         return aliases.get(normalized, normalized)
 
-    async def get_conversations(self) -> list[ChatConversation]:
-        chats = await self.repository.get_all_chats()
+    async def get_conversations(self, organization_id: str | None = None) -> list[ChatConversation]:
+        chats = await self.repository.get_all_chats(organization_id=organization_id)
         return [ChatConversation(
             id=str(c["_id"]),
             user_name=c.get("user_name") or "Unknown",
