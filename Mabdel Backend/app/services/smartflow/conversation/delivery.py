@@ -24,6 +24,7 @@ class ConversationDeliveryMixin:
         self, user_id: str, platform: str, contact_id: str | None, content: str, errors: list[str] | None = None,
         receipt: dict | None = None,
         conversation_id: str | None = None,
+        attachments: list[dict] | None = None,
     ) -> bool:
         """Send message to the actual platform. Returns True if delivered, False if failed/skipped.
         When a provider explains a failure, the reason is appended to ``errors``."""
@@ -32,7 +33,7 @@ class ConversationDeliveryMixin:
             return True  # no external delivery needed
 
         if platform == "sms":
-            return await self._deliver_sms(user_id, contact_id, content, errors, receipt, conversation_id)
+            return await self._deliver_sms(user_id, contact_id, content, errors, receipt, conversation_id, attachments=attachments)
 
         if platform == "email":
             delivered = await self._deliver_email(user_id, contact_id, content, conversation_id)
@@ -81,6 +82,7 @@ class ConversationDeliveryMixin:
     async def _deliver_sms(
         self, user_id: str, contact_id: str | None, content: str, errors: list[str], receipt: dict | None,
         conversation_id: str | None = None,
+        attachments: list[dict] | None = None,
     ) -> bool:
         """Reply by SMS from the business's own Telnyx number."""
         from app.services.call_service import CallService
@@ -102,8 +104,14 @@ class ConversationDeliveryMixin:
         if not from_number:
             errors.append("Your business has no SMS number yet - set one up under AI Calling.")
             return False
+        media_urls = [a["url"] for a in attachments or [] if isinstance(a, dict) and a.get("url")]
         try:
-            response = await CallService().send_sms(to_number=to_number, message=content, from_number=from_number)
+            response = await CallService().send_sms(
+                to_number=to_number,
+                message=content,
+                from_number=from_number,
+                media_urls=media_urls or None,
+            )
         except AppException as exc:
             errors.append(f"SMS could not be sent: {exc.message}")
             return False
@@ -363,6 +371,7 @@ class ConversationDeliveryMixin:
         platform: str,
         contact_id: str | None,
         content: str,
+        attachments: list[dict] | None = None,
     ) -> None:
         errors: list[str] = []
         # Contacts and the channel connection belong to the conversation's owner, not
@@ -371,7 +380,9 @@ class ConversationDeliveryMixin:
         owner_id = (conversation or {}).get("user_id") or user_id
         receipt: dict = {}
         try:
-            delivered = await self._deliver_outbound(owner_id, platform, contact_id, content, errors, receipt, conversation_id)
+            delivered = await self._deliver_outbound(
+                owner_id, platform, contact_id, content, errors, receipt, conversation_id, attachments=attachments
+            )
         except Exception:
             logger.exception("Outbound %s delivery crashed", platform)
             delivered = False
