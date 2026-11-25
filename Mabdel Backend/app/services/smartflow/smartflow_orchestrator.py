@@ -1077,7 +1077,15 @@ class SmartFlowService(SmartFlowBase):
         return {"device_id": payload["device_id"], "registered": True}
 
     async def change_password(self, user: dict, current_password: str, new_password: str) -> dict:
-        if not verify_password(current_password, user["password_hash"]):
+        # BE-S2: Handle social/Google accounts without a usable password hash
+        password_hash = user.get("password_hash") or user.get("hashed_password")
+        if not password_hash:
+            raise AppException(
+                status_code=400,
+                code="PASSWORD_NOT_SET",
+                message="This account signs in with Google; password is not set.",
+            )
+        if not verify_password(current_password, password_hash):
             raise AppException(status_code=400, code="INVALID_PASSWORD", message="Current password is incorrect.")
         await self.db.users.update_one(
             {"_id": user["_id"]},
