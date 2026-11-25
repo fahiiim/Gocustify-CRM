@@ -48,6 +48,8 @@ htmlcov/
 .pytest_cache/
 
 # Temp / scratch files
+uploads/
+private_uploads/
 *_matched_endpoints.txt
 *_unmatched_endpoints.txt
 unmatched_endpoints.txt
