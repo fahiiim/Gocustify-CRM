@@ -1,0 +1,631 @@
+<USER_REQUEST>
+my App developer have give me thhis report fo backend issues, find that things and fix the issues which is legitimate. and update the code of the backend according to the issues:
+Lease backend change
+
+
+Order
+Issue
+Affected feature
+Backend fix required
+1
+LS-01
+PDF download and DocuSign
+Generate complete, multi-page Unicode PDFs from the same lease revision used for signing.
+2
+LS-02
+Signed lease editing, deletion, and signing
+Preserve immutable signed revisions, prevent improper deletion, and enforce atomic signature transitions.
+3
+LS-15
+Lease access, private files, and public signing
+Enforce document category and permissions consistently. Limit public responses to the fields signers need.
+4
+LS-17
+Signer identity, consent, and required signatures
+Verify each signer’s role, record consent, and complete the lease only after all required parties sign.
+5
+LS-06
+Active, expired, and signing eligibility
+Apply consistent start-date, expiry, and action rules on the server.
+6
+LS-08
+Saved rent and deposit edits
+Give newly submitted amounts precedence over stored values and keep document terms in sync.
+7
+LS-13
+Renewal
+Enforce eligibility, create and link one successor atomically, and preserve the correct counterparty.
+8
+LS-03
+AI Improve preview and acceptance
+Give eligible edit-only users access to draft preview and reject acceptance when the saved revision has changed.
+9
+LS-19
+Draft generation and lease creation
+Preserve explicitly entered zero rent and prevent duplicate records after an ambiguous retry.
+10
+LS-10
+Drawn signature and native signed PDF
+Accept and privately store signature images, then generate a native signed PDF.
+11
+LS-11
+Native signature email
+Send the Lease-specific signing link and track delivery outcomes and retries.
+12
+LS-18
+DocuSign status and completion
+Bind envelopes to the sending connection, preserve provider timestamps, authenticate and safely retry webhooks, and revoke superseded native links.
+13
+LS-05
+Lease duration
+Correct the server’s calendar-month calculation. Mobile date display and validation are already fixed.
+14
+LS-21
+Generated terms and automated review
+Reflect the configured signature requirements and report only what the automated checks establish.
+15
+LS-23
+Lease list pagination and counts
+Stabilize pagination and replace capped summary reads with accurate aggregation.
+
+
+
+
+
+# Message Tab: Backend Fix Requirements
+
+
+This document covers only issues that need backend changes. The source audit is `../MOBILE_MESSAGE_TAB_AUDIT.md` (2026-11-22); the mobile fixes are in `MESSAGE_TAB_MOBILE_FIX_REPORT.md`.
+
+
+No backend code, schema or data was changed.
+
+
+**Evidence.** The "Probe" references are throwaway pytest files run against the backend in-process on the project's own mongomock fixtures (`app/tests/conftest.py`), with every provider faked:
+
+
+- `audit_probe_test.py`: P1–P8, from the audit.
+- `mobile_fix_probe_test.py`: F1–F5, re-run after the mobile fixes.
+
+
+Neither file is in any repository.
+
+
+Paths are relative to `Mabdel Backend/app/`.
+
+
+---
+
+
+## Critical
+
+
+### BE-1: A "group" conversation can pull users from another business into a thread
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | J2 (BF1) |
+| Severity | **Critical**: authorization / privacy |
+| Current behaviour | `POST /api/v1/smartflow/conversations` with `type:"group"` and any user IDs in `member_ids` returns 201. The thread appears in those users' inboxes, and they can read and post in it. |
+| Expected | The same reachability rule as for `type:"direct"`: a colleague in the same organization, or a person saved as a contact. Groups should be created through `/groups`. |
+| Confirmed root cause | `ConversationCoreMixin.create_conversation` (`services/smartflow/conversation/core.py:79-84`) calls `_assert_members_share_organization` only when `conversation_type == "direct"`. `_get_accessible_conversation` path 4 (`services/smartflow/_base_mixins/access.py:102`) then grants access to anyone listed in `member_ids`. |
+| Evidence | Probe P8: `direct` with a stranger's ID → 403. `group` → **201**. Thread in the stranger's inbox: `True`. Stranger `GET …/messages` → **200**. |
+| Mobile usage | After this fix pass the mobile app no longer calls this. `GroupChatScreen` used to fall back to `POST /conversations {type:"group"}`, and that fallback was removed. The endpoint is still open to any API client. |
+| Endpoint | `POST /api/v1/smartflow/conversations` (`api/v1/endpoints/smartflow/conversations.py:176-184`) |
+| Data | `conversations.member_ids`, `conversations.organization_id` |
+| Why mobile cannot fix it | This is server-side authorization. |
+| Required change | On the public endpoint, either reject `type:"group"` (create groups only through `POST /groups`), or run `_assert_members_share_organization` on every member that is a valid user ObjectId, whatever the type. Stamp `organization_id`. Add a regression test equivalent to P8. |
+| Dependent mobile workflows | None functionally. This is about data exposure in every user's inbox. |
+| Priority / blocks production | P0. **Blocks production readiness.** |
+
+
+---
+
+
+## High
+
+
+### BE-2: Outbound messages trust the client's `platform` and `contact_id`
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | C3 (BF2). Also affects D1 and G9. |
+| Severity | High (integrity: a reply is stored as "sent" without being delivered) |
+| Current behaviour | `create_message` stores `platform` and `contact_id` exactly as the client sends them. Two cases fail: <br>1. `platform:"ai"` in a WhatsApp thread is stored as `sent` and **never delivered**, because `_deliver_outbound` returns True for `ai`. <br>2. The correct platform without `contact_id` fails WhatsApp, Messenger, Instagram and email delivery ("no … address"). |
+| Expected | For a customer conversation, the server takes the channel and recipient from the conversation, and rejects a mismatched platform. |
+| Confirmed root cause | `messages.py:56-57` (`"contact_id": payload.get("contact_id")`, `"platform": payload["platform"]`). `delivery.py:39-40` skips `ai`/`internal`. `delivery.py:349-358` needs `contact_id`. |
+| Evidence | Probe P1: the old mobile body gave `sent` / `ai` with 0 provider calls. No `contact_id` gave `failed`. With `contact_id` the message was delivered. After the mobile fix, probe F1 shows WhatsApp delivered and probe F2 shows SMS delivered. |
+| Mobile usage | Fixed on mobile: it now sends the conversation's platform and `contact_id` (`src/utils/chatThread.js` `buildOutgoingRequest`). The **website still omits `contact_id`** (`Mabdel Website/src/pages/UnifiedConversations.jsx:312`), so its WhatsApp, Messenger, Instagram and email replies remain affected. |
+| Endpoints | `POST /api/v1/smartflow/messages`, `POST /api/v1/smartflow/messages/{id}/reply` |
+| Service | `ConversationMessagesMixin.create_message`, `reply_to_message`, `ConversationDeliveryMixin._finalize_outbound_delivery` |
+| Data | `conversations.platform`, `conversations.contact_id`, `messages.status` |
+| Why mobile alone is not enough | The server must not let any client turn a customer reply into an undelivered message that reports success. Other clients (the website) still omit `contact_id`. |
+| Required change | In `create_message`, when the conversation is a customer conversation (`_is_customer_conversation`): <br>1. Default `contact_id` to `conversation["contact_id"]`. <br>2. Reject (400) or override a `platform` that differs from `conversation["platform"]`. |
+| Dependent mobile workflows | Customer replies (text, image, voice), delivery ticks, failure display |
+| Priority / blocks production | P0–P1. **Blocks production** for the website; defence in depth for mobile. |
+
+
+### BE-3: The conversation WebSocket ignores the `messages:view` permission
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | J3 (BF3) |
+| Current behaviour | A member restricted by RBAC to `invoices:view` gets 403 on REST, but `WS /ws/conversations/{id}` accepts them and streams messages. |
+| Evidence | Probe P6: REST 403, socket `ACCEPTED connected`. |
+| Endpoint | `WS /api/v1/smartflow/ws/conversations/{conversation_id}` (`api/v1/endpoints/smartflow/conversations.py:28-49`). The inbox socket already checks, at `:91-95`. |
+| Root cause | The handler checks token, user, blocked status and conversation access, but not RBAC. |
+| Why mobile cannot fix it | Permission enforcement is server-side. |
+| Required change | Before `conversation_realtime_hub.connect`, add the same `RBACService.has_permission(..., "messages", "view")` check as `inbox_stream`, and close with 1008 when it fails. |
+| Dependent mobile workflows | Realtime messages, typing and status in the conversation and group screens. Mobile treats a 1008 close as final and falls back to polling, which REST would then also refuse. |
+| Priority / blocks production | P0. **Blocks production** (permission bypass). |
+
+
+### BE-4: Group members picked from contacts never gain access
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | J4, K12, K17 (BF4) |
+| Current behaviour | Both the mobile and website group member pickers list **contacts** (`Mabdel Website/src/pages/Groups.jsx:232`, mobile `CreateGroupScreen`/`GroupSettingScreen`), so `member_ids` hold contact IDs. Every access check matches **user IDs** (`services/smartflow/conversation/groups.py:56`, `_base_mixins/access.py:102`). Only the owner, plus colleagues added by user ID, can open the group. |
+| Evidence | Code trace (a sub-review, confirmed against the code). Not probed at runtime. |
+| Endpoints | `POST /api/v1/smartflow/groups`, `POST /groups/{id}/members`, `PATCH /groups/{id}` |
+| Data | `groups.member_ids`, `conversations.member_ids` |
+| Why mobile cannot fix it | The mobile app sends the same contact IDs as the website. Mapping a contact to a platform user is server knowledge (`_resolve_group_member_user_id` already does it for RBAC). |
+| Required change | When members are added, resolve each contact to its linked user and store user IDs in the group conversation's `member_ids`. Alternatively, accept user IDs from a teammate picker (`GET /conversations/assignees` already lists teammates) and document that contract. |
+| Dependent mobile workflows | Group chat for non-owners: open, read, send, leave |
+| Priority / blocks production | P1. Blocks group messaging for everyone except the owner. |
+
+
+### BE-5: Attachments are not delivered to external channels
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | G9 (BF6) |
+| Current behaviour | In a customer thread, `_finalize_outbound_delivery` passes only `content` to the provider (`services/smartflow/conversation/messages.py:111-119`, `delivery.py:31-83`). An image or voice reply goes out as empty text, or not at all. |
+| Evidence | Code trace. |
+| Why mobile cannot fix it | Media delivery happens through provider APIs on the server. |
+| Required change | Pass the attachments through and use each provider's media API (WhatsApp media message, MMS or a link for SMS, email attachment). Until that exists, reject media sends on those channels with a clear 400 instead of storing them as `sent`. |
+| Dependent mobile workflows | Image and voice replies in customer threads |
+| Priority / blocks production | P1. |
+
+
+---
+
+
+## Medium
+
+
+### BE-6: Typing state has no actor identity
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | B8 (BF7) |
+| Current behaviour | `GET …/typing` returns the **viewer's own** typing document for non-global chats (`services/smartflow/conversation/typing_state.py:17-18`). The `typing.updated` socket payload carries no user ID, so a client cannot tell its own typing from someone else's. |
+| Evidence | Probe P4: A types; B sees `False`, A sees `True`. |
+| Mobile change already made | Mobile stopped polling `GET /typing` (which showed you your own typing). It now shows `typing.updated` only when `actor_type` is `ai` or `contact`, and sends its own typing as `actor_type:"user"`. Colleague typing is therefore not shown until this is fixed. |
+| Required change | <br>1. In `get_typing_state`, query `{"conversation_id": id, "user_id": {"$ne": viewer}, "is_typing": True}` for every conversation type. <br>2. Add `user_id` to the `typing.updated` payload. |
+| Priority / blocks production | P2. Does not block. |
+
+
+### BE-7: Attachment upload accepts any file type
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | G5 (BF8) |
+| Evidence | Probe P7: `.exe` → 201, type `file`. |
+| Endpoint | `POST /api/v1/smartflow/conversations/{id}/attachments` → `store_message_attachment` (`services/smartflow/conversation/messages.py:127-152`) |
+| Required change | Add an allow-list of MIME types and extensions (images, audio, PDF and office documents) and an explicit size limit, returning 415 or 413. The current size limit inside `media_storage.store_file` was **not verified**. |
+| Priority / blocks production | P2. |
+
+
+### BE-8: Group profile PATCH can wipe all members
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | K11 (BF5) |
+| Current behaviour | `PATCH /groups/{id}` with `member_ids: []` replaces the member list (`services/smartflow/conversation/groups.py:93-99`). |
+| Mobile change already made | The edit screen can no longer save before the group has loaded, and sends `member_ids` only when they were edited. This matches the website, whose settings form never sends them. |
+| Required change | Ignore `member_ids` in a profile PATCH, or reject an empty list there. Membership already has its own endpoints. |
+| Priority / blocks production | P2 now that mobile is mitigated. Defence in depth. |
+
+
+---
+
+
+## Low
+
+
+| ID | Issue (audit ID) | Required backend change | Mobile impact today |
+|---|---|---|---|
+| BE-9 | Serialized conversation lacks `group_id` (A21) | Add `group_id` to `_serialize_conversation` for group threads | Mobile looks the group up by conversation ID (one extra request) |
+| BE-10 | Group owner missing from `members`, and the "admin" role has no effect (K9, K14) | Include the owner in `_serialize_group_members`. Make admin rights effective, or drop the role | The members list omits the owner. "Change role" changes nothing |
+| BE-11 | Invites are stored but never sent (K15) | Send the invite (email or SMS) or remove the feature | Not exposed in mobile UI |
+| BE-12 | No idempotency on `POST /messages` (C7) | Accept an idempotency key or `client_temp_id` and deduplicate | A network retry after a timeout can duplicate a message |
+| BE-13 | WebSocket token travels in the query string | Accept `Authorization` on the upgrade or a short-lived socket ticket | Token may appear in proxy and access logs |
+| BE-14 | No group-photo upload endpoint (K10) | Add `POST /groups/{id}/avatar` (multipart), like `contacts/{id}/avatar` | Mobile no longer saves phone-local photo paths. Choosing a group photo is not possible |
+| BE-15 | AI chat stores the user's prompt as `inbound` and the answer as `outbound`, both with `sender_is_self: true` (`services/smartflow/conversation/ai_chat.py:85-96`) | Store and serialize AI-chat messages from the viewer's side (prompt = self/outbound) | Mobile works around it by using `direction` inside AI threads (probe F5) |
+
+
+---
+
+
+## Not established, or product decisions (no requirement stated)
+
+
+- **Push notifications for new messages (H1–H3):** no message-push sender was found in the backend, and the mobile app has no push SDK. Whether this is planned is unknown, and the website has no equivalent.
+- **Mute, block, report and mark-as-unread (F4, F5):** neither the backend nor the website has these. They are a product decision, not a defect.
+
+
+## Shared root causes
+
+
+- **BE-2** affects every customer-channel reply on **both** clients.
+- **BE-4** affects every group function for non-owners.
+- **BE-1** and **BE-3** are authorization gaps and should ship first.
+
+
+
+
+# Community Tab: Backend Fix Requirements
+
+
+This document covers only issues that need backend changes. The mobile fixes are in `COMMUNITY_TAB_MOBILE_FIX_REPORT.md`. No backend code, schema or data was changed.
+
+
+**Scope.** The mobile Community tab (`src/stack/CommunityStack.js`) has two parts:
+
+
+- **Groups:** `GroupsHome`, `CreateGroup`, `GroupChat`, `GroupSetting`.
+- **Community events:** the Events tab of `GroupsHome`.
+
+
+It has no feed, posts, likes, comments, follows or sharing, so none are listed here.
+
+
+**Evidence.**
+
+
+- "Probe C1–C4" are throwaway pytest files run in-process against the backend on the project's own mongomock fixtures. The request bodies are built by the mobile app's own `src/utils/communityEvents.js`.
+- "Probe P8" and the BE-x IDs come from the Message tab work (`MESSAGE_TAB_BACKEND_FIX_REQUIREMENTS.md`). The group screens are shared by both tabs, so those issues are listed once here and cross-referenced.
+
+
+Paths are relative to `Mabdel Backend/app/`.
+
+
+---
+
+
+## Critical
+
+
+### CB-1: Group conversations can pull in another business's users (same as BE-1)
+
+
+| Field | Detail |
+|---|---|
+| Feature | Group chat (`GroupChat`, opened from the Community → Groups list) |
+| Current behaviour | `POST /api/v1/smartflow/conversations` with `type:"group"` accepts any user IDs. The thread then appears in those users' inboxes, and they can read and post in it. |
+| Confirmed root cause | `services/smartflow/conversation/core.py:79-84` runs the organization check for `direct` conversations only. |
+| Evidence | Probe P8: `direct` → 403, `group` → 201, and the other business's user reads the messages (200). |
+| Mobile | No longer calls it. `GroupChatScreen` used to create `type:"group"` conversations as a fallback; that was removed. |
+| Required change | See BE-1: reject `type:"group"` on this endpoint, or check every member. |
+| Blocks a core workflow / priority | Security. **P0, blocks production.** |
+
+
+---
+
+
+## High
+
+
+### CB-2: Community events are visible to every business, and can expose the host's email
+
+
+| Field | Detail |
+|---|---|
+| Feature | Events tab: list, search, RSVP |
+| Severity | **High if events are meant to belong to one business.** Needs a product decision (see below). |
+| Current behaviour | `GET /api/v1/events` returns events from **all** organizations. `create_event` stores `organization_id`, but `list_events` never filters on it. Each event carries `hostName = full_name or email`, so a host with no full name shows their **email address** to every user on the platform. |
+| Expected | Unknown. The website and backend give no rule saying events are platform-public. If they are per-business, filter by organization. In every case, don't fall back to the email address as the public host name. |
+| Root cause | `api/v1/endpoints/activities_events.py:176-213`: the query only has `category` and `search`. `:222`: `user_name = current_user.get("full_name") or current_user.get("email")`. Activities do the same at `:123`. |
+| Evidence | Probe C3: an event created by business A ("Private staff training") is listed for business B: `True`. |
+| Mobile files | `src/screens/community/GroupsHomeScreen.js` (list), `src/utils/communityEvents.js` (`organizer`) |
+| Endpoint | `GET /api/v1/events`, `POST /api/v1/events` |
+| Data | `events.organization_id`, `events.hostName`, `events.participants` |
+| Why mobile cannot fix it | Visibility and the stored host name are decided by the server. Mobile shows what it is sent, and the website does the same. |
+| Required change | 1. Confirm the intended audience. 2. If events are per-business, add `{"organization_id": user_org}` to the list query and to the lookup in join/leave. 3. Store a display name without falling back to the email, for example `full_name or "Host"`. |
+| Dependent features | Event list, search, RSVP |
+| Blocks a core workflow / priority | Privacy. **P1.** Confirm the intended audience before release. |
+
+
+### CB-3: Group members picked from contacts never get access (same as BE-4)
+
+
+| Field | Detail |
+|---|---|
+| Feature | Create group, Add member, Group chat for members, Leave |
+| Current behaviour | The mobile and website pickers both send **contact** IDs. Access to the group and its chat is checked against **user** IDs (`services/smartflow/conversation/groups.py:56`, `_base_mixins/access.py:102`). Only the owner can use the group. |
+| Evidence | Code trace. Not probed at runtime. |
+| Required change | See BE-4: when a member is added, resolve contact to user and store user IDs in the group conversation, or add a teammate (user) picker contract. |
+| Blocks a core workflow / priority | Yes: groups only work for their owner. **P1.** |
+
+
+---
+
+
+## Medium
+
+
+### CB-4: The event capacity check is not atomic
+
+
+| Field | Detail |
+|---|---|
+| Feature | RSVP |
+| Current behaviour | `join_event` reads `participants`, compares the length with `participantLimit`, then `$push`es in a separate write (`api/v1/endpoints/activities_events.py:263-277`). Two people joining at the same time for the last seat can both succeed. |
+| Evidence | Code trace. Not reproduced, since mongomock doesn't run requests concurrently. |
+| Why mobile cannot fix it | It's a race between clients. |
+| Required change | Use one conditional update, for example `update_one({"_id": id, "participants": {"$ne": uid}, "$expr": {"$lt": [{"$size": "$participants"}, "$participantLimit"]}}, {"push":...,"inc": ...})`, and return 400 FULL when nothing matched. |
+| Priority | P2. |
+
+
+### CB-5: Group profile PATCH can wipe all members (same as BE-8)
+
+
+Mobile is mitigated: Save stays disabled until the group loads, and members are only sent when edited. The server should still ignore or reject an empty `member_ids` in `PATCH /api/v1/smartflow/groups/{id}` (`services/smartflow/conversation/groups.py:93-99`). **P2.**
+
+
+---
+
+
+## Low
+
+
+| ID | Issue | Required change | Mobile impact today |
+|---|---|---|---|
+| CB-6 | `EventCreate` silently drops unknown fields. Mobile used to send `starts_at`, and every mobile event was stored with date and time "TBD" (probe C1). | Set `model_config = ConfigDict(extra="forbid")` on `EventCreate` so a wrong client gets a 422 instead of bad data | Mobile now sends `date`/`time` (probe C2) |
+| CB-7 | `date`, `time` and `timezone` are free strings with no validation (`activities_events.py` `EventCreate`) | Validate `date` as `YYYY-MM-DD`, `time` as `HH:MM`, and `timezone` as an IANA name | Mobile validates on the client |
+| CB-8 | Group invites are stored but never sent (same as BE-11) | Send the invite by email or SMS, or remove the feature | Mobile's new invite form says "Invite saved" (pending), not "sent" |
+| CB-9 | No group photo upload endpoint (same as BE-14) | `POST /api/v1/smartflow/groups/{id}/avatar` (multipart) | Mobile refuses to save phone-local photo paths |
+| CB-10 | The group owner isn't listed in `members`, and the admin role has no effect (same as BE-10) | Include the owner; make admin rights effective or drop the role | The member list omits the owner; changing roles does nothing |
+| CB-11 | Events are sorted by `created_at`, and past events are never hidden | Product decision: sort by date/time and optionally hide past events | None (website is the same) |
+
+
+---
+
+
+## Not defects: features absent on every layer
+
+
+- **Edit or delete a community event:** there is no backend endpoint, and neither the website nor mobile offers it.
+- **Feed, posts, likes, comments, replies, follows, sharing, community notifications:** these don't exist in this product's Community module, on the backend or the website.
+
+
+## Shared root causes
+
+
+- **CB-1** and **CB-3** are the same group-membership and authorization defects as Message tab BE-1 and BE-4. Fixing them once fixes both tabs.
+- **CB-2** is the only Community-specific privacy question, and it needs a product decision.
+
+
+
+
+
+# Settings Tab: Backend Fix Requirements
+
+
+This document lists only issues that need backend changes. It does not cover issues that are purely device-local, OS-permission or external-provider problems with no backend side.
+
+
+- **Source audit:** `../MOBILE_SETTINGS_TAB_AUDIT.md` (2026-11-22).
+- **Mobile fixes:** `SETTINGS_TAB_MOBILE_FIX_REPORT.md`.
+- No backend code, schema or data was changed.
+
+
+**Evidence.** Probes **S1–S6** (from the audit) and **F1–F5** (after the mobile fixes) are throwaway pytest files. They run the backend in-process on the repository's mongomock fixtures, with throwaway accounts. External providers (Resend, DNS, push) are faked. Paths are relative to `Mabdel Backend/app/`.
+
+
+---
+
+
+## Critical
+
+
+### BE-S1: Any business can read every business's support conversations
+
+
+| Field | Detail |
+|---|---|
+| Feature | Help & Support: live chat (customers' messages to platform support) |
+| Ownership | Backend-synchronized (`support_sessions`, `support_messages`) |
+| Current behaviour | The owner, supervisor or staff of **any** business can call `GET /api/v1/dashboard/admin/chats` and receive every business's support conversations, including the customer's last message. |
+| Expected | Only platform support staff (super_admin and admin) can see support chats. If tenants have their own support inbox, it is scoped to their organization. |
+| Confirmed root cause | `api/dashboard/admin.py:553-563` allows the tenant roles `owner`, `supervisor` and `staff`. `services/dashboard/dashboard_service.py:454-463` (`get_conversations`) lists every chat with no organization filter. |
+| Evidence | Probe S6. Business A wrote "My card ending 4242 was charged twice". The owner of an unrelated business B received A's conversation, with that text, from `/dashboard/admin/chats`. Replying to A returned 404, so impersonation is **not verified**. |
+| Mobile usage | `ProfileSupportScreen` sends `POST /api/v1/smartflow/support/messages`. Mobile is not involved in the leak. |
+| Website usage | The website support tab uses the same `support/*` routes. The leak is in the dashboard admin routes. |
+| Endpoints | `GET /api/v1/dashboard/admin/chats`, `GET/POST /api/v1/dashboard/admin/chats/{user_id}/messages` |
+| Data | `support_sessions`, `support_messages` |
+| Why mobile can't fix it | Server authorization. |
+| Required change | Restrict these routes to platform `super_admin`/`admin`, or scope every query by the caller's organization. Audit the per-user history and reply routes with the same rule. Add a regression test equivalent to S6. |
+| Dependent mobile workflows | Help & Support chat (privacy of what users write there) |
+| Priority / blocks production | **P0. Blocks production.** |
+
+
+---
+
+
+## High
+
+
+### BE-S2: Change password crashes for accounts without a usable password hash
+
+
+| Field | Detail |
+|---|---|
+| Feature | Change password |
+| Ownership | Backend (`users.password_hash`) |
+| Current behaviour | For Google sign-up accounts (`password_hash: ""`), `POST /smartflow/settings/change-password` raises an unhandled `UnknownHashError`, which becomes HTTP 500. Accounts that have only a legacy `hashed_password` field would raise `KeyError`. |
+| Expected | A clear 400 such as "This account signs in with Google; set a password first", or a set-password flow. Login already reads both field names. |
+| Confirmed root cause | `services/smartflow/smartflow_orchestrator.py:1076-1078` calls `verify_password(current_password, user["password_hash"])` without checking the hash exists (compare `auth_service.py:65`). |
+| Evidence | Probe S4. |
+| Mobile usage | `ProfileChangePasswordScreen` → `authSlice.changePassword`. Mobile shows the server's message, or "Failed to change password." Like the website, mobile doesn't special-case providers. |
+| Why mobile can't fix it | The crash is on the server, and the website shows the same screen. |
+| Required change | Read `password_hash or hashed_password`. If it is empty, return 400 with code `PASSWORD_NOT_SET` instead of verifying. |
+| Priority / blocks production | P1. Social-login users can't change their password. |
+
+
+### BE-S3: Android push goes through the retired legacy FCM endpoint
+
+
+| Field | Detail |
+|---|---|
+| Feature | Push notifications (all notification categories) |
+| Ownership | Hybrid: backend sender, external provider (FCM/APNs), OS permission and the mobile token |
+| Current behaviour | `services/push_notification_service.py:139` posts to `https://fcm.googleapis.com/fcm/send`. `vibrate` is stored on the job but never sent. |
+| Expected | FCM HTTP v1 (`projects/{id}/messages:send`) with a service account. |
+| Root cause | Legacy API. Google retired it in 2024 according to its published deprecation schedule; this was **not verified live**. |
+| Evidence | Code trace. Backend `test_push_notifications.py` passes only because it uses fakes. |
+| Mobile usage | Mobile has not been registering a device yet; see the mobile report (BLOCKED, platform/external). |
+| Required change | Migrate to FCM v1, and send sound/vibrate according to the preferences. |
+| Priority / blocks production | P1 for push, which works nowhere on mobile today. |
+
+
+---
+
+
+## Medium
+
+
+| ID | Feature | Current behaviour | Root cause | Required change | Evidence | Mobile dependency |
+|---|---|---|---|---|---|---|
+| BE-S4 | Session security (logout, password change, "sign out of all devices", account deletion) | Access tokens keep working for up to 30 min after any of these | `dependencies.get_current_user:31-44` has no revocation check; `ACCESS_TOKEN_EXPIRE_MINUTES=30` | Add a per-user `sessions_valid_after` or token-version claim, bump it on logout-all, password change and revoke, and check it in `get_current_user` | Probes S1 and S2 (access token 200 after logout and after a password change) | The mobile "sign out everywhere" and logout both clear the local session; other devices stay signed in until expiry |
+| BE-S5 | Logout scope | Logging out on one device revokes **every** refresh token of the user, so all devices are signed out | `auth_service.logout:371-375` calls `revoke_all_user_tokens` | Revoke only the presented refresh token. Mobile would then need to send it in the logout body (today it sends `{}`), so the mobile side is a follow-up once the backend accepts it. Keep "all devices" for `/settings/revoke-sessions` | Probe S1 | Logout |
+| BE-S6 | Support chat longer than 50 messages | `GET /smartflow/support/messages` returns the **oldest** page first, so new messages never appear | `smartflow_orchestrator.py:930-940` sorts ascending with a fixed page | Return newest-first pages or cursors | Code trace (audit) | Support chat |
+| BE-S8 | Support tickets | Tickets now save (mobile fixed; probe F3 returns 201), but no admin route reads `support_tickets` | No reader exists | Add an admin list/reply for tickets, or remove the feature from both clients | Grep | Create ticket |
+| BE-S9 | Delete account | No re-authentication; organization, email-domain and avatar data are left behind | `DELETE /smartflow/account` (`smartflow_orchestrator.py:803-853`) | Require recent re-authentication on the server, and define a retention or cascade for organization-level data and media | Code trace; backend test `test_account_delete_revokes_access_to_profile_data` | Delete account (the website also has no re-authentication, so this is a server-side policy change) |
+| BE-S10 | Business profile ownership | Stored per **user**: each teammate has a separate business profile, and the AI agent, invoices and agreements read the caller's | `business_profiles` keyed by `user_id` (`settings.py:49-79`) | Decide product behaviour; if it is per business, key it by `organization_id` with an RBAC edit permission | Code trace | Business profile (intended behaviour unknown) |
+
+
+## Low
+
+
+| ID | Feature | Required change |
+|---|---|---|
+| BE-S7 | Clearing business-profile fields | `PATCH /business-profile` drops `None` and empty values, so nothing can be cleared (`smartflow_orchestrator.py:769-790`). Treat `""` as clear. The website and mobile both send `undefined` today, so this needs a coordinated client change afterwards. |
+| BE-S11 | Closing message | `closing_message` is read only by the classic engine, not by the default realtime receptionist (`ai_phone_agent.py:826-838` vs `realtime_receptionist.py`). Use it in the realtime hang-up. |
+| BE-S12 | Notification aliases | The backend silently ignores unknown fields (`notifications_enabled` and others used to be sent by mobile). Consider `extra="forbid"` so clients get a 422. Mobile now sends only the 8 schema fields. |
+
+
+---
+
+
+## Shared root causes
+
+
+- **Session model (BE-S4 and BE-S5):** refresh-token-only revocation plus stateless access tokens. This affects logout, password change, sign-out of all devices and account deletion.
+- **Support data (BE-S1, BE-S6, BE-S8):** the support subsystem lacks tenant scoping, newest-first paging and an admin view for tickets.
+
+
+## Correction to earlier documents
+
+
+`MESSAGE_TAB_BACKEND_FIX_REQUIREMENTS.md` says no push sender exists on the backend. That is wrong. `push_notification_service.py`, `POST /smartflow/devices/push-token` and the preference checks exist. The gaps are BE-S3 above and mobile not registering a device token.
+
+
+# Voice form filling backend amount audit
+
+
+November 23, 2026
+
+
+**Option C, VF-19, is implemented in the backend.** SmartFlow previously converted localized amounts before returning the patch to mobile. The parser now preserves unambiguous decimals and rejects ambiguous strings. The endpoints, numeric field names, and amount units are unchanged.
+
+
+## Ownership and status
+
+
+| Issue | Owner | Status or required work |
+|---|---|---|
+| VF-21 · Meeting mode and links | Mobile | The meeting form preserves the selected mode and its active field unless voice extraction supplies an explicit mode change. A location-only patch keeps the online link in the save payload. |
+| VF-22 · Microphone lifecycle and provisional text | Mobile | The shared recognition hook aborts active capture on background, waits for native start before marking the session as recording, and keeps provisional text separate from the command submitted by both mobile entry points. Native verification is pending. |
+| VF-18 · Preserve existing invoice rows | Mobile | Voice updates merge uniquely matched descriptions and append new rows. Ambiguous matches require manual review. A truncated response no longer deletes untouched rows. |
+| VF-18 · Extraction completeness and row identity | Backend and mobile | The backend still caps lists at 20 items. Accurate add/update operations need explicit row identity or an incomplete-response signal, and the mobile app needs to consume it. |
+| VF-16 · Provider availability | Backend configuration | Configure `OPENAI_API_KEY` and verify the configured model supports structured extraction in the target environment. Deployed availability is pending verification. |
+| VF-19 · Amount parsing | Backend | SmartFlow prefill and lease draft generation use the shared decimal parser. Invalid numeric patches preserve existing values. |
+| VF-23 · Missing-field metadata | Backend | Readiness uses the destination request schema and checks invoice rows, document actions, timing and broadcast recipients. Mobile form validation runs at save. |
+| VF-20 · Spoken directory names | Backend and mobile | The server resolves unique name matches in the permitted directory. The mobile form shows the resolved selections and asks the user to clarify ambiguous names. |
+| VF-17 · Prefill contract acknowledgement | Backend and mobile | The server returns `mode: "requested_fields"` for the new path. The mobile card and assistant require it before applying prefill. Deploy the backend first. |
+
+
+The mobile regression suite passed 61 tests with one existing skip. The mounted tests verified background cancellation, rejection of provisional text and legacy prefill, preservation of a 21-row invoice and an online meeting link, and review of resolved contacts outside the loaded directory page. The backend regression run passed 52 tests. It covered decimal parsing, lease rent inference, scoped and ambiguous names, response compatibility, and action-specific readiness.
+
+
+## Original behavior
+
+
+Mobile sends a transcript and `requested_fields_only: true` to `POST /api/v1/smartflow/ai/workflow-prefill`. The response travels through `_extract_workflow_prefill_with_ai`, `_sanitize_ai_prefill`, and `_sanitize_ai_value` before the app receives it. An in-process probe executed the checked-out parsing functions on synthetic inputs without calling the provider or database.
+
+
+| Input | Observed backend result | Impact |
+|---|---|---|
+| Model value `"1,5"` | `15.0` | Can change invoice quantity, unit price or tax, lease rent or deposit, or meeting reminder. |
+| Model value `"1.234,50"` | `1.2345` | Can turn 1,234.50 into roughly 1.23 after money rounding. |
+| Model value `"1,,5"` | `15.0` | Malformed input becomes a plausible number. |
+| Rent due day `"4.5"`, `"32"`, or `"invalid"` | `4`, `31`, or `1` respectively | Fractional and invalid days are truncated, clamped, or replaced. This is a shared backend field. The current mobile voice mapper does not bind it. |
+| Legacy transcript price `$1,5` or `$1.234,50` | `15.0` or `1.23` respectively | The fallback uses separate regular expressions and comma deletion. |
+| Legacy transcript `1.5 hours at $10 each` | Quantity `5`, unit price `10.0` | The integer-only regex matches the trailing part of the fractional quantity. |
+| Lease draft prompt `Rent is $1,5 per month`, `Rent is $1.234,50 per month`, or `Deposit is $200` | The fallback returns 1,500, 123, or 20,000 cents respectively | Localized rent is misparsed and a deposit-only prompt can be treated as rent. |
+
+
+Finite JSON numbers retain their value in the current sanitizer. The probe also verified that zero survives and boolean, `NaN`, and infinity are rejected by the floating-point sanitizer. Existing endpoint fixtures cover JSON numbers. They do not prove correctness for localized model strings.
+
+
+## Backend changes
+
+
+| Priority | Location | Required change |
+|---|---|---|
+| High | `app/services/smartflow/_base_mixins/workflow_prefill.py`, `_extract_workflow_prefill_with_ai`, `_coerce_float`, and `_sanitize_ai_prefill` | Explicitly request JSON numbers with no currency symbols or locale separators. Validate the actual response independently of the prompt. Accept finite JSON numbers and parse numeric strings only when their format determines a single value. Parse `"1,5"` as 1.5 and both `"1,234.50"` and `"1.234,50"` as 1234.50. Reject malformed separators and strings such as `"1,234"` when no explicit numeric format disambiguates them. Use decimal parsing internally and keep JSON numbers in the response. |
+| High | `workflow_prefill.py`, `_sanitize_ai_value` and invoice line-item validation | Enforce field constraints before returning the patch. Quantity must be positive and can be fractional. Unit price, rent and deposit must be nonnegative. Tax must be 0–100. Reminder minutes must be an integer from 0–10,080. Rent due day must be an integer from 1–31. Preserve valid zeroes and omit invalid scalar fields from the patch. For an invoice list with an explicitly invalid quantity or price, withhold the unsafe list update while preserving other valid fields. Older mobile builds can replace existing rows with a partial list. Current mobile builds preserve omitted fields on matched rows and default an omitted quantity to 1 on new rows. |
+| High | `app/services/smartflow/_base_mixins/lease_agreement.py`, `_prompt_money_to_cents` and `_normalize_lease_details` | The prompted lease draft separately strips commas and can read the first dollar amount as rent. Parse a complete amount using the same policy and infer only an amount identified as rent. Enter this fallback only when structured rent is absent. The current `amount_cents == 0` check also replaces an explicit zero. Preserve structured cent values as sent and use exact decimal-to-cents conversion for inferred rent. |
+| High if legacy callers remain enabled | `workflow_prefill.py`, `_extract_money_amount` and `_extract_qty_and_price` | Use the shared parser for the entire recognized amount or quantity token. Stop matching only the tail of a decimal quantity or the prefix of an invalid amount. Keep whole-number quantities and the existing total-versus-unit-price rule for valid inputs. Requested-field mobile prefill bypasses this fallback. |
+
+
+The existing save constraints are defined in `app/schemas/invoice.py`, `app/schemas/smartflow/agreements_leases.py`, and `app/schemas/smartflow/calendar.py`. Prefill validation should align with those constraints. This change does not require a database migration or changes to normal manual-entry parsing. Invoice row identity and spoken directory lookup remain separate work under VF-18 and VF-20.
+
+
+## Regression coverage and release verification
+
+
+- Extend the existing FastAPI fixtures in `app/tests/test_ai_workflow_page.py`. Exercise invoice quantity, price and tax, lease rent and deposit, and calendar reminder boundaries. Check that invalid model values leave the original fields intact, valid fields in the same response survive, and explicit zero remains a numeric zero.
+- Verify invoice prefill with a malformed price or quantity cannot send a list that overwrites existing rows or turns the value into a default. Include a valid decimal quantity with a grouped price and compare the reviewed values with the saved totals.
+- Test lease draft generation through `POST /api/v1/smartflow/leases/generate` using a localized rent, a deposit-only prompt, and an explicit zero rent with a conflicting prompt. Assert the draft returns the intended cents.
+- If the legacy fallback is retained, extend `app/tests/test_smartflow_messages.py` with the observed price and fractional-quantity regressions. Retain the existing grouped-number and total-versus-unit-price cases.
+
+
+The parsing failures above were reproduced locally with synthetic inputs. Eight existing FastAPI tests passed across requested-field form extraction and legacy invoice quantity handling. Live provider output frequency and deployed behavior remain unverified.
+
+after updating run the local server and dont push the updated code to the repository.
+
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-25T09:48:36+06:00.
+
+The user's current state is as follows:
+Active Document: c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Backend\scripts\backfill_shared_inbox.py (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Backend\.env (LANGUAGE_UNSPECIFIED)
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Backend\app\api\v1\endpoints\shop.py (LANGUAGE_UNSPECIFIED)
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Website\src\context\TelnyxVoiceContext.test.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Website\src\api\client.test.js (LANGUAGE_UNSPECIFIED)
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Website\src\components\inbox\MessageBubble.test.jsx (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>
