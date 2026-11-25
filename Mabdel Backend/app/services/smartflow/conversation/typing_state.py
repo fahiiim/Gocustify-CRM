@@ -9,13 +9,18 @@ from app.utils.helpers import utc_now
 class ConversationTypingMixin:
     async def get_typing_state(self, user_id: str, conversation_id: str) -> dict:
         conversation = await self._get_accessible_conversation(user_id, conversation_id, "CONVERSATION_NOT_FOUND")
-        if conversation.get("is_global_chat"):
-            typing_doc = await self.db.typing_states.find_one(
-                {"conversation_id": conversation_id, "is_typing": True, "user_id": {"$ne": user_id}},
-                sort=[("updated_at", -1)],
-            )
-        else:
-            typing_doc = await self.db.typing_states.find_one({"user_id": user_id, "conversation_id": conversation_id})
+        # BE-6: Match other users' typing, or AI / external contact typing (filtering out viewer's own user typing)
+        typing_doc = await self.db.typing_states.find_one(
+            {
+                "conversation_id": conversation_id,
+                "is_typing": True,
+                "$or": [
+                    {"user_id": {"$ne": user_id}},
+                    {"actor_type": {"$in": ["ai", "contact"]}},
+                ],
+            },
+            sort=[("updated_at", -1)],
+        )
         if not typing_doc:
             return {
                 "conversation_id": conversation_id,
@@ -67,6 +72,7 @@ class ConversationTypingMixin:
         )
         response = {
             "conversation_id": conversation_id,
+            "user_id": user_id,
             "is_typing": is_typing,
             "actor_name": updated.get("actor_name"),
             "actor_type": updated.get("actor_type", "ai"),
