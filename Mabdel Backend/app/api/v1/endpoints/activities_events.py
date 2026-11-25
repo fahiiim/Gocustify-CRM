@@ -119,7 +119,7 @@ async def create_activity(
     db: AsyncIOMotorDatabase = Depends(get_mongo_database),
 ):
     user_id = str(current_user.get("_id") or current_user.get("id"))
-    user_name = current_user.get("full_name") or current_user.get("email") or "Host"
+    user_name = current_user.get("full_name") or "Host"
     
     doc = {
         "name": payload.name,
@@ -181,15 +181,28 @@ async def list_events(
 ):
     user_id = str(current_user.get("_id") or current_user.get("id"))
     query: dict[str, Any] = {}
+    and_clauses: list[dict[str, Any]] = []
+
+    # CB-2: Scope events to the user's organization
+    org_id = current_user.get("organization_id")
+    if org_id:
+        and_clauses.append({"$or": [{"organization_id": org_id}, {"organization_id": user_id}]})
+    else:
+        and_clauses.append({"organization_id": user_id})
+
     if category and category.lower() != "all":
         query["category"] = {"$regex": f"^{category}$", "$options": "i"}
     if search:
-        query["$or"] = [
-            {"title": {"$regex": search, "$options": "i"}},
-            {"description": {"$regex": search, "$options": "i"}},
-            {"hostName": {"$regex": search, "$options": "i"}},
-            {"location": {"$regex": search, "$options": "i"}},
-        ]
+        and_clauses.append({
+            "$or": [
+                {"title": {"$regex": search, "$options": "i"}},
+                {"description": {"$regex": search, "$options": "i"}},
+                {"hostName": {"$regex": search, "$options": "i"}},
+                {"location": {"$regex": search, "$options": "i"}},
+            ]
+        })
+    if and_clauses:
+        query["$and"] = and_clauses
         
     items = await db.events.find(query).sort("created_at", -1).to_list(length=100)
     return success_response(
@@ -204,7 +217,8 @@ async def create_event(
     db: AsyncIOMotorDatabase = Depends(get_mongo_database),
 ):
     user_id = str(current_user.get("_id") or current_user.get("id"))
-    user_name = current_user.get("full_name") or current_user.get("email") or "Host"
+    # CB-2: Never fall back to host email as public host name
+    user_name = current_user.get("full_name") or "Host"
     
     doc = {
         "title": payload.title,
@@ -241,25 +255,28 @@ async def join_event(
     db: AsyncIOMotorDatabase = Depends(get_mongo_database),
 ):
     user_id = str(current_user.get("_id") or current_user.get("id"))
-    event = await db.events.find_one({"_id": _object_id_or_raw(event_id)})
-    if not event:
-        raise AppException(status_code=404, code="NOT_FOUND", message="Event not found.")
-
-    participants = [str(item) for item in event.get("participants", [])]
-    if user_id in participants:
-        return success_response(data=_serialize_event(event, user_id), message="You have already joined this event.")
-
-    if len(participants) >= event.get("participantLimit", 100):
-        raise AppException(status_code=400, code="FULL", message="Event participant limit reached.")
-
-    await db.events.update_one(
-        {"_id": _object_id_or_raw(event_id)},
+    # CB-4: Atomic capacity check and participant push
+    res = await db.events.update_one(
+        {
+            "_id": _object_id_or_raw(event_id),
+            "participants": {"$ne": user_id},
+            "$expr": {"$lt": [{"$size": {"$ifNull": ["$participants", []]}}, "$participantLimit"]},
+        },
         {
             "$push": {"participants": user_id},
             "$inc": {"joinedCount": 1},
             "$set": {"updated_at": utc_now()},
         },
     )
+    if res.modified_count == 0:
+        event = await db.events.find_one({"_id": _object_id_or_raw(event_id)})
+        if not event:
+            raise AppException(status_code=404, code="NOT_FOUND", message="Event not found.")
+        participants = [str(item) for item in event.get("participants", [])]
+        if user_id in participants:
+            return success_response(data=_serialize_event(event, user_id), message="You have already joined this event.")
+        raise AppException(status_code=400, code="FULL", message="Event participant limit reached.")
+
     updated_event = await db.events.find_one({"_id": _object_id_or_raw(event_id)})
     return success_response(data=_serialize_event(updated_event, user_id), message="Event joined successfully.")
 
