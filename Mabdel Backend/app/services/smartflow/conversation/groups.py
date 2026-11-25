@@ -95,9 +95,11 @@ class ConversationGroupsMixin:
         old_member_ids = set(group.get("member_ids", []))
         old_role_slug = group.get("role_slug")
         clean_updates = {key: value for key, value in updates.items() if value is not None}
-        if "member_ids" in clean_updates:
+        # BE-8 / CB-5: A profile PATCH must not wipe group members if an empty list is sent.
+        if clean_updates.get("member_ids"):
             clean_updates["member_ids"] = await self._normalize_group_member_ids(user_id, clean_updates["member_ids"])
         else:
+            clean_updates.pop("member_ids", None)
             clean_updates["member_ids"] = list(dict.fromkeys(group.get("member_ids", [])))
         if "admin_ids" in clean_updates:
             clean_updates["admin_ids"] = self._normalize_group_admin_ids(clean_updates["member_ids"], clean_updates["admin_ids"])
