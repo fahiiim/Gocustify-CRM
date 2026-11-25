@@ -63,9 +63,10 @@ class LeaseService(SmartFlowBase):
         team_ids = await self._resolve_team_user_ids(user_id)
         filters = self._lease_list_filters(team_ids, search, status)
         total = await self.db.agreements.count_documents(filters)
-        cursor = self.db.agreements.find(filters).sort("updated_at", -1).skip((page - 1) * page_size).limit(page_size)
+        # LS-23: Stable pagination sort and accurate summary aggregation
+        cursor = self.db.agreements.find(filters).sort([("updated_at", -1), ("_id", -1)]).skip((page - 1) * page_size).limit(page_size)
         items = [self._serialize_lease(item, include_content=False) for item in await cursor.to_list(length=page_size)]
-        all_leases = await self.db.agreements.find({"user_id": {"$in": team_ids}, "agreement_type": "lease"}).to_list(length=1000)
+        all_leases = await self.db.agreements.find({"user_id": {"$in": team_ids}, "agreement_type": "lease"}).to_list(length=None)
         return {
             "items": items,
             "summary": self._lease_summary(all_leases),
