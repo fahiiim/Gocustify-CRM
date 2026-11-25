@@ -47,14 +47,21 @@ class ConversationMessagesMixin:
         message_time = payload.get("timestamp") or now
         is_history_import = bool(payload.get("is_history_import"))
         unread_count = 1 if (payload["direction"] == "inbound" and not is_history_import) else 0
+
+        # BE-2: For a customer conversation, deliver on the conversation's real platform
+        # and default to the conversation's contact_id when not provided by the client.
+        is_customer = self._is_customer_conversation(conversation)
+        message_platform = conversation.get("platform") if is_customer else payload["platform"]
+        message_contact_id = payload.get("contact_id") or conversation.get("contact_id")
+
         document = {
             "user_id": conversation.get("user_id", user_id),  # conversation owner id for scoping
             "sender_user_id": user_id,  # always the actual sender
             "organization_id": conversation.get("organization_id"),
             "is_global_chat": bool(conversation.get("is_global_chat")),
             "conversation_id": payload["conversation_id"],
-            "contact_id": payload.get("contact_id"),
-            "platform": payload["platform"],
+            "contact_id": message_contact_id,
+            "platform": message_platform,
             "direction": payload["direction"],
             "content": content,
             "media_url": payload.get("media_url") or self._primary_attachment_url(attachments),
@@ -110,12 +117,13 @@ class ConversationMessagesMixin:
 
         if payload["direction"] == "outbound":
             delivery = self._finalize_outbound_delivery(
-                    user_id=user_id,
-                    conversation_id=payload["conversation_id"],
-                    message_id=str(document["_id"]),
-                    platform=payload["platform"],
-                    contact_id=payload.get("contact_id"),
-                    content=content,
+                user_id=user_id,
+                conversation_id=payload["conversation_id"],
+                message_id=str(document["_id"]),
+                platform=message_platform,
+                contact_id=message_contact_id,
+                content=content,
+                attachments=attachments,
             )
             if payload.get("_await_delivery"):
                 await delivery
@@ -123,6 +131,20 @@ class ConversationMessagesMixin:
                 return await self._serialize_message(actual, viewer_user_id=user_id)
             asyncio.create_task(delivery)
         return serialized
+
+    ALLOWED_ATTACHMENT_EXTENSIONS = {
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg",
+        ".mp3", ".wav", ".m4a", ".ogg", ".webm",
+        ".mp4", ".mov", ".avi", ".mkv",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv",
+    }
+    DISALLOWED_MIME_PREFIXES = (
+        "application/x-dosexec",
+        "application/x-msdownload",
+        "application/x-executable",
+        "application/x-sharedlib",
+    )
+    MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
 
     async def store_message_attachment(
         self,
@@ -134,6 +156,14 @@ class ConversationMessagesMixin:
         filename: str | None,
     ) -> dict:
         await self._get_accessible_conversation(user_id, conversation_id, "CONVERSATION_NOT_FOUND")
+        if len(file_bytes) > self.MAX_ATTACHMENT_SIZE_BYTES:
+            raise AppException(status_code=413, code="FILE_TOO_LARGE", message="Attachment exceeds the maximum allowed size of 25MB.")
+        if filename:
+            ext = Path(filename).suffix.lower()
+            if ext and ext not in self.ALLOWED_ATTACHMENT_EXTENSIONS:
+                raise AppException(status_code=415, code="UNSUPPORTED_MEDIA_TYPE", message=f"Files with extension '{ext}' are not supported as attachments.")
+        if content_type and any(content_type.lower().startswith(p) for p in self.DISALLOWED_MIME_PREFIXES):
+            raise AppException(status_code=415, code="UNSUPPORTED_MEDIA_TYPE", message=f"Content type '{content_type}' is not supported.")
         stored = self.media_storage.store_file(
             owner_id=user_id,
             folder="message_attachments",
