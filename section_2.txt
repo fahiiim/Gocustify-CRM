@@ -1,0 +1,144 @@
+# Community Tab: Backend Fix Requirements
+
+
+This document covers only issues that need backend changes. The mobile fixes are in `COMMUNITY_TAB_MOBILE_FIX_REPORT.md`. No backend code, schema or data was changed.
+
+
+**Scope.** The mobile Community tab (`src/stack/CommunityStack.js`) has two parts:
+
+
+- **Groups:** `GroupsHome`, `CreateGroup`, `GroupChat`, `GroupSetting`.
+- **Community events:** the Events tab of `GroupsHome`.
+
+
+It has no feed, posts, likes, comments, follows or sharing, so none are listed here.
+
+
+**Evidence.**
+
+
+- "Probe C1–C4" are throwaway pytest files run in-process against the backend on the project's own mongomock fixtures. The request bodies are built by the mobile app's own `src/utils/communityEvents.js`.
+- "Probe P8" and the BE-x IDs come from the Message tab work (`MESSAGE_TAB_BACKEND_FIX_REQUIREMENTS.md`). The group screens are shared by both tabs, so those issues are listed once here and cross-referenced.
+
+
+Paths are relative to `Mabdel Backend/app/`.
+
+
+---
+
+
+## Critical
+
+
+### CB-1: Group conversations can pull in another business's users (same as BE-1)
+
+
+| Field | Detail |
+|---|---|
+| Feature | Group chat (`GroupChat`, opened from the Community → Groups list) |
+| Current behaviour | `POST /api/v1/smartflow/conversations` with `type:"group"` accepts any user IDs. The thread then appears in those users' inboxes, and they can read and post in it. |
+| Confirmed root cause | `services/smartflow/conversation/core.py:79-84` runs the organization check for `direct` conversations only. |
+| Evidence | Probe P8: `direct` → 403, `group` → 201, and the other business's user reads the messages (200). |
+| Mobile | No longer calls it. `GroupChatScreen` used to create `type:"group"` conversations as a fallback; that was removed. |
+| Required change | See BE-1: reject `type:"group"` on this endpoint, or check every member. |
+| Blocks a core workflow / priority | Security. **P0, blocks production.** |
+
+
+---
+
+
+## High
+
+
+### CB-2: Community events are visible to every business, and can expose the host's email
+
+
+| Field | Detail |
+|---|---|
+| Feature | Events tab: list, search, RSVP |
+| Severity | **High if events are meant to belong to one business.** Needs a product decision (see below). |
+| Current behaviour | `GET /api/v1/events` returns events from **all** organizations. `create_event` stores `organization_id`, but `list_events` never filters on it. Each event carries `hostName = full_name or email`, so a host with no full name shows their **email address** to every user on the platform. |
+| Expected | Unknown. The website and backend give no rule saying events are platform-public. If they are per-business, filter by organization. In every case, don't fall back to the email address as the public host name. |
+| Root cause | `api/v1/endpoints/activities_events.py:176-213`: the query only has `category` and `search`. `:222`: `user_name = current_user.get("full_name") or current_user.get("email")`. Activities do the same at `:123`. |
+| Evidence | Probe C3: an event created by business A ("Private staff training") is listed for business B: `True`. |
+| Mobile files | `src/screens/community/GroupsHomeScreen.js` (list), `src/utils/communityEvents.js` (`organizer`) |
+| Endpoint | `GET /api/v1/events`, `POST /api/v1/events` |
+| Data | `events.organization_id`, `events.hostName`, `events.participants` |
+| Why mobile cannot fix it | Visibility and the stored host name are decided by the server. Mobile shows what it is sent, and the website does the same. |
+| Required change | 1. Confirm the intended audience. 2. If events are per-business, add `{"organization_id": user_org}` to the list query and to the lookup in join/leave. 3. Store a display name without falling back to the email, for example `full_name or "Host"`. |
+| Dependent features | Event list, search, RSVP |
+| Blocks a core workflow / priority | Privacy. **P1.** Confirm the intended audience before release. |
+
+
+### CB-3: Group members picked from contacts never get access (same as BE-4)
+
+
+| Field | Detail |
+|---|---|
+| Feature | Create group, Add member, Group chat for members, Leave |
+| Current behaviour | The mobile and website pickers both send **contact** IDs. Access to the group and its chat is checked against **user** IDs (`services/smartflow/conversation/groups.py:56`, `_base_mixins/access.py:102`). Only the owner can use the group. |
+| Evidence | Code trace. Not probed at runtime. |
+| Required change | See BE-4: when a member is added, resolve contact to user and store user IDs in the group conversation, or add a teammate (user) picker contract. |
+| Blocks a core workflow / priority | Yes: groups only work for their owner. **P1.** |
+
+
+---
+
+
+## Medium
+
+
+### CB-4: The event capacity check is not atomic
+
+
+| Field | Detail |
+|---|---|
+| Feature | RSVP |
+| Current behaviour | `join_event` reads `participants`, compares the length with `participantLimit`, then `$push`es in a separate write (`api/v1/endpoints/activities_events.py:263-277`). Two people joining at the same time for the last seat can both succeed. |
+| Evidence | Code trace. Not reproduced, since mongomock doesn't run requests concurrently. |
+| Why mobile cannot fix it | It's a race between clients. |
+| Required change | Use one conditional update, for example `update_one({"_id": id, "participants": {"$ne": uid}, "$expr": {"$lt": [{"$size": "$participants"}, "$participantLimit"]}}, {"push":...,"inc": ...})`, and return 400 FULL when nothing matched. |
+| Priority | P2. |
+
+
+### CB-5: Group profile PATCH can wipe all members (same as BE-8)
+
+
+Mobile is mitigated: Save stays disabled until the group loads, and members are only sent when edited. The server should still ignore or reject an empty `member_ids` in `PATCH /api/v1/smartflow/groups/{id}` (`services/smartflow/conversation/groups.py:93-99`). **P2.**
+
+
+---
+
+
+## Low
+
+
+| ID | Issue | Required change | Mobile impact today |
+|---|---|---|---|
+| CB-6 | `EventCreate` silently drops unknown fields. Mobile used to send `starts_at`, and every mobile event was stored with date and time "TBD" (probe C1). | Set `model_config = ConfigDict(extra="forbid")` on `EventCreate` so a wrong client gets a 422 instead of bad data | Mobile now sends `date`/`time` (probe C2) |
+| CB-7 | `date`, `time` and `timezone` are free strings with no validation (`activities_events.py` `EventCreate`) | Validate `date` as `YYYY-MM-DD`, `time` as `HH:MM`, and `timezone` as an IANA name | Mobile validates on the client |
+| CB-8 | Group invites are stored but never sent (same as BE-11) | Send the invite by email or SMS, or remove the feature | Mobile's new invite form says "Invite saved" (pending), not "sent" |
+| CB-9 | No group photo upload endpoint (same as BE-14) | `POST /api/v1/smartflow/groups/{id}/avatar` (multipart) | Mobile refuses to save phone-local photo paths |
+| CB-10 | The group owner isn't listed in `members`, and the admin role has no effect (same as BE-10) | Include the owner; make admin rights effective or drop the role | The member list omits the owner; changing roles does nothing |
+| CB-11 | Events are sorted by `created_at`, and past events are never hidden | Product decision: sort by date/time and optionally hide past events | None (website is the same) |
+
+
+---
+
+
+## Not defects: features absent on every layer
+
+
+- **Edit or delete a community event:** there is no backend endpoint, and neither the website nor mobile offers it.
+- **Feed, posts, likes, comments, replies, follows, sharing, community notifications:** these don't exist in this product's Community module, on the backend or the website.
+
+
+## Shared root causes
+
+
+- **CB-1** and **CB-3** are the same group-membership and authorization defects as Message tab BE-1 and BE-4. Fixing them once fixes both tabs.
+- **CB-2** is the only Community-specific privacy question, and it needs a product decision.
+
+
+
+
