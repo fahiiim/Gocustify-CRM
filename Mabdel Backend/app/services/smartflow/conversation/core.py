@@ -76,12 +76,17 @@ class ConversationCoreMixin:
         member_ids = list(dict.fromkeys([user_id, *payload.get("member_ids", [])]))
         conversation_type = payload.get("type", "direct")
         organization_id = None
-        if conversation_type == "direct":
-            # Only "direct" conversations use member_ids as real platform user ids —
-            # create_group (below) reuses this same method with member_ids resolved
-            # from _normalize_group_member_ids, which allows contact ids too, so this
-            # check would misfire there (a contact id is never a valid user id).
-            organization_id = await self._assert_members_share_organization(user_id, member_ids)
+        if conversation_type in ("direct", "group"):
+            # BE-1 / CB-1: Prevent cross-tenant reachability. Any valid user ObjectIds must share
+            # an organization or be a saved contact by email.
+            valid_user_members = [m for m in member_ids if ObjectId.is_valid(m) and m != user_id]
+            user_ids_to_check = [user_id]
+            for m in valid_user_members:
+                user = await self.db.users.find_one({"_id": ObjectId(m)})
+                if user:
+                    user_ids_to_check.append(m)
+            if len(user_ids_to_check) > 1:
+                organization_id = await self._assert_members_share_organization(user_id, user_ids_to_check)
         document = {
             "user_id": user_id,
             "title": payload.get("title"),
@@ -93,11 +98,11 @@ class ConversationCoreMixin:
             "created_at": now,
             "updated_at": now,
         }
-        # Stamped when there are real teammates on the thread, and on every customer
-        # thread (it belongs to the organization's shared inbox) - lets
-        # _get_accessible_conversation check the organization later.
-        if not organization_id and self._is_customer_conversation(document):
-            organization_id = (await self._get_user_document(user_id)).get("organization_id")
+        # Stamped when there are real teammates on the thread, on every customer
+        # thread, and for tenant-scoped conversations.
+        if not organization_id:
+            user_doc = await self._get_user_document(user_id)
+            organization_id = user_doc.get("organization_id")
         if organization_id:
             document["organization_id"] = organization_id
         if self._is_customer_conversation(document):
