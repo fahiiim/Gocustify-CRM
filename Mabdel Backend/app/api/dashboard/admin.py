@@ -608,7 +608,12 @@ async def get_all_conversations(
     """
     Get all active conversations. Corresponds to the left panel of the 'Inbox' screen.
     """
-    data = await service.get_conversations()
+    # BE-S1: Scope support chats to tenant organization unless platform super_admin / admin
+    user_role = str(current_user.get("role") or "").lower()
+    org_id = None
+    if user_role not in ("super_admin", "admin"):
+        org_id = current_user.get("organization_id")
+    data = await service.get_conversations(organization_id=org_id)
     return BaseResponse(data=data)
 
 
