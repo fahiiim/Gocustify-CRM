@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from bson import ObjectId
 
 from app.core.config import settings
-from app.utils.helpers import utc_now
+from app.utils.helpers import utc_now, parse_decimal_string
 
 
 class WorkflowPrefillMixin:
@@ -389,14 +389,24 @@ class WorkflowPrefillMixin:
             clean[key] = cls._sanitize_ai_value(key, value)
         if intent == "invoice" and isinstance(raw.get("items"), list):
             items = []
+            has_invalid_item = False
             for item in raw["items"][:20]:
                 if not isinstance(item, dict):
                     continue
                 description = str(item.get("description") or "Service").strip()[:120]
-                quantity = cls._coerce_int(item.get("quantity"), default=1, minimum=1)
-                unit_price = cls._coerce_float(item.get("unit_price"), default=0.0, minimum=0.0)
-                items.append({"description": description or "Service", "quantity": quantity, "unit_price": unit_price})
-            if items:
+                raw_qty = item.get("quantity")
+                raw_price = item.get("unit_price")
+                parsed_qty = parse_decimal_string(raw_qty) if raw_qty is not None else 1.0
+                parsed_price = parse_decimal_string(raw_price) if raw_price is not None else 0.0
+                if parsed_qty is None or parsed_qty <= 0:
+                    has_invalid_item = True
+                    break
+                if parsed_price is None or parsed_price < 0:
+                    has_invalid_item = True
+                    break
+                qty = int(parsed_qty) if parsed_qty.is_integer() else parsed_qty
+                items.append({"description": description or "Service", "quantity": qty, "unit_price": parsed_price})
+            if items and not has_invalid_item:
                 clean["items"] = items
         return clean
 
@@ -406,8 +416,12 @@ class WorkflowPrefillMixin:
             return [str(item).strip() for item in value if str(item).strip()] if isinstance(value, list) else []
         if key in {"send_now"}:
             return bool(value)
-        if key in {"tax_rate", "monthly_rent", "security_deposit", "reminder_minutes"}:
+        if key == "tax_rate":
+            return WorkflowPrefillMixin._coerce_float(value, default=0.0, minimum=0.0, maximum=100.0)
+        if key in {"monthly_rent", "security_deposit"}:
             return WorkflowPrefillMixin._coerce_float(value, default=0.0, minimum=0.0)
+        if key == "reminder_minutes":
+            return WorkflowPrefillMixin._coerce_int(value, default=0, minimum=0, maximum=10080)
         if key in {"rent_due_day"}:
             return WorkflowPrefillMixin._coerce_int(value, default=1, minimum=1, maximum=31)
         if key == "currency":
@@ -423,10 +437,8 @@ class WorkflowPrefillMixin:
 
     @staticmethod
     def _coerce_float(value, default: float = 0.0, minimum: float | None = None, maximum: float | None = None) -> float:
-        try:
-            number = float(str(value).replace(",", ""))
-        except (TypeError, ValueError):
-            number = default
+        parsed = parse_decimal_string(value)
+        number = parsed if parsed is not None else default
         if minimum is not None:
             number = max(minimum, number)
         if maximum is not None:
@@ -435,10 +447,8 @@ class WorkflowPrefillMixin:
 
     @staticmethod
     def _coerce_int(value, default: int = 0, minimum: int | None = None, maximum: int | None = None) -> int:
-        try:
-            number = int(float(str(value).replace(",", "")))
-        except (TypeError, ValueError):
-            number = default
+        parsed = parse_decimal_string(value)
+        number = int(round(parsed)) if parsed is not None else default
         if minimum is not None:
             number = max(minimum, number)
         if maximum is not None:
@@ -483,17 +493,27 @@ class WorkflowPrefillMixin:
         return {"invoice": "Invoice", "bulk_message": "Bulk message", "calendar": "Calendar", "lease": "Lease", "agreement": "Agreement", "contact": "Contact", "email": "Email", "group": "Group", "call": "Call"}.get(intent, "AI")
 
     @staticmethod
-    def _extract_qty_and_price(text: str, default_amount: float | None = None) -> tuple[int, float]:
+    def _extract_qty_and_price(text: str, default_amount: float | None = None) -> tuple[int | float, float]:
         # Standard fallback: check for numbers preceding typical item words (allowing optional adjective)
-        qty_match = re.search(r"\b(\d+)\s+(?:[\w-]+\s+)?(?:items?|pcs?|copies|designs?|hours?|days?|services?)\b", text, flags=re.IGNORECASE)
-        qty = int(qty_match.group(1)) if qty_match else 1
+        qty_match = re.search(r"\b(\d+(?:[.,]\d+)?)\s+(?:[\w-]+\s+)?(?:items?|pcs?|copies|designs?|hours?|days?|services?)\b", text, flags=re.IGNORECASE)
+        if qty_match:
+            parsed_q = parse_decimal_string(qty_match.group(1))
+            qty = parsed_q if parsed_q is not None and parsed_q > 0 else 1
+            if isinstance(qty, float) and qty.is_integer():
+                qty = int(qty)
+        else:
+            qty = 1
 
         # Determine the price
-        price_match = re.search(r"(?:\$|usd\s*)\s*([0-9][0-9,]*(?:\.\d{1,2})?)", text, flags=re.IGNORECASE)
+        price_match = re.search(r"(?:\$|usd\s*)\s*([0-9][0-9.,]*)", text, flags=re.IGNORECASE)
         if not price_match:
-            price_match = re.search(r"([0-9][0-9,]*(?:\.\d{1,2})?)\s*(?:dollars?|usd|/month|per month)", text, flags=re.IGNORECASE)
+            price_match = re.search(r"([0-9][0-9.,]*)\s*(?:dollars?|usd|/month|per month)", text, flags=re.IGNORECASE)
 
-        amount = float(price_match.group(1).replace(",", "")) if price_match else (default_amount or 0.0)
+        if price_match:
+            parsed_price = parse_decimal_string(price_match.group(1))
+            amount = parsed_price if parsed_price is not None else (default_amount or 0.0)
+        else:
+            amount = default_amount or 0.0
 
         # If "each" or "per" or "a piece" is mentioned, the amount is the unit price
         if re.search(r"\b(?:each|per|/|a piece)\b", text, flags=re.IGNORECASE):
@@ -528,10 +548,10 @@ class WorkflowPrefillMixin:
 
     @staticmethod
     def _extract_money_amount(text: str) -> float | None:
-        match = re.search(r"(?:\$|usd\s*)\s*([0-9][0-9,]*(?:\.\d{1,2})?)", text, flags=re.IGNORECASE)
+        match = re.search(r"(?:\$|usd\s*)\s*([0-9][0-9.,]*)", text, flags=re.IGNORECASE)
         if not match:
-            match = re.search(r"([0-9][0-9,]*(?:\.\d{1,2})?)\s*(?:dollars?|usd|/month|per month)", text, flags=re.IGNORECASE)
-        return float(match.group(1).replace(",", "")) if match else None
+            match = re.search(r"([0-9][0-9.,]*)\s*(?:dollars?|usd|/month|per month)", text, flags=re.IGNORECASE)
+        return parse_decimal_string(match.group(1)) if match else None
 
     @staticmethod
     def _extract_emails(text: str) -> list[str]:
