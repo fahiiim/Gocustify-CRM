@@ -17,6 +17,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -588,23 +589,32 @@ class RealtimeReceptionist(AIPhoneAgent):
                     verify += f"; last verified: {plan['last_verified_at']} (never guarantee current benefits or coverage)"
                 plan_lines.append(f"- {label}: {status}, network status: {plan.get('network_status', 'unknown')}{verify}")
             recognition = get_insurance_recognition_dictionary(call_settings.get("business_type"))
+            configured_plans_text = (
+                "\n".join(plan_lines)
+                if plan_lines
+                else "No insurance plans are configured yet. Tell the caller you don't have confirmed information on file and the office will verify their insurance."
+            )
+            recognition_text = (
+                f"Recognized insurer names (for understanding what the caller said; recognizing a name is NOT the same as it being accepted): {', '.join(recognition)}.\n"
+                if recognition
+                else ""
+            )
             insurance_block = (
                 "\nHEALTHCARE & DENTAL INSURANCE VERIFICATION FLOW (MANDATORY 4-STEP PROTOCOL):\n"
                 "When a caller is inquiring about an appointment, dental visit, or medical service, guide them through this exact sequence:\n"
                 "1. STEP 1 - INQUIRE INSURANCE: Ask if the caller has dental or health insurance.\n"
                 "2. STEP 2 - CARRIER IDENTIFICATION: If yes, ask for their insurance carrier name (e.g. Delta Dental, MetLife, BCBS, Cigna, Aetna).\n"
                 "3. STEP 3 - PLAN CATEGORY: Ask for their plan type or category (e.g. PPO, HMO, Premier, or Medicare/Medicaid).\n"
-                "4. STEP 4 - EXPLAIN COPAY & NETWORK STATUS:\n"
-                "   - For In-Network plans (e.g. accepted PPO plans below): explain that they are in-network, and their standard copay is typically $30 (subject to office verification).\n"
-                "   - For Out-of-Network plans or non-participating HMOs: explain that the office is out-of-network, their estimated copay/fee is $80, and the office will provide itemized claims for reimbursement.\n"
-                "   - For Uninsured / Cash-pay: explain that self-pay consultations/exams have an estimated fee of $80.\n"
+                "4. STEP 4 - EXPLAIN NETWORK STATUS & VERIFICATION:\n"
+                "   - For In-Network plans (accepted plans listed below): explain that our practice is in-network with their carrier, and that coverage benefits and copay amounts will be verified by our front office prior to treatment.\n"
+                "   - For Out-of-Network plans or non-participating plans: explain that the practice is out-of-network, and our office can provide an itemized superbill for the patient to submit for direct reimbursement.\n"
+                "   - For Uninsured / Cash-pay: explain that self-pay patients receive transparent fee schedules and our office will review pricing before performing services.\n"
+                "   - CRITICAL GROUNDING & SAFEGUARD RULE: NEVER fabricate or guess specific copay amounts (such as $30 or $80) unless an exact fee is explicitly configured in the business services or fee schedule below.\n"
+                "   - If the caller asks about an unconfigured, unknown or unverified insurance plan, tell them you don't have confirmed information on file and the office will gladly verify coverage details for them.\n"
                 "\nCONFIGURED INSURANCE PLANS IN SYSTEM:\n"
-                + ("\n".join(plan_lines) if plan_lines else "No specific insurance plans are listed yet.") + "\n"
-                + (
-                    f"Recognized carrier names: ({', '.join(recognition)}).\n"
-                    if recognition else ""
-                )
-                + "Always clarify that the front office will verify coverage details before confirming the final benefit.\n"
+                f"{configured_plans_text}\n"
+                f"{recognition_text}"
+                "Always clarify that the front office will verify coverage details before confirming the final benefit.\n"
             )
         providers_block = ""
         ask_provider_line = ""
@@ -628,7 +638,7 @@ class RealtimeReceptionist(AIPhoneAgent):
                         details.append(f"Hours: {wh.get('start_hour', 9)}:00-{wh.get('end_hour', 17)}:00")
                     desc = f" ({', '.join(details)})" if details else ""
                     prov_strs.append(f"{p['name']}{desc}")
-                lines.append("PROVIDERS (Check provider working days before offering appointment times): " + ", ".join(prov_strs))
+                lines.append("PROVIDERS: " + ", ".join(prov_strs))
             if appointment_types:
                 lines.append("APPOINTMENT TYPES: " + ", ".join(f"{t['name']} ({t['duration_minutes']} min)" for t in appointment_types))
             locations = await self._providers().list_locations(self.user_id, active_only=True)
@@ -638,6 +648,7 @@ class RealtimeReceptionist(AIPhoneAgent):
                 providers_block = "\n" + "\n".join(lines) + "\n"
                 ask_provider_line = (
                     "- This business has named providers (e.g. dentists, hygienists, physicians) and/or appointment types listed above. "
+                    "Ask which one the caller wants if they did not specify. "
                     "When a caller requests a specific provider or service, verify the provider's working days and hours. "
                     "If the caller asks for a day the provider does not work (e.g. hygienist available only Mon & Wed requested on Friday), "
                     "politely explain when they work and offer open times on their working days. Always pass the exact provider name to check_availability.\n"
@@ -734,6 +745,13 @@ class RealtimeReceptionist(AIPhoneAgent):
             sections.append(
                 "\nBUSINESS OWNER PREFERENCES (tone and priorities only; never a reason to state something that is not in the facts "
                 f"or knowledge above, nor to break the rules below):\n{self.OWNER_BLOCK_START}\n{safe}\n{self.OWNER_BLOCK_END}\n"
+            )
+        custom_phrases = [str(p).strip() for p in (call_settings.get("custom_phrases") or []) if p and str(p).strip()]
+        if custom_phrases:
+            sections.append(
+                "\nBUSINESS TERMINOLOGY & RECOGNITION HINTS:\n"
+                "Recognize these business-specific terms, services, and phrases from the caller:\n"
+                + "\n".join(f"- {p}" for p in custom_phrases) + "\n"
             )
         sections.append(language_line)
         capability_rules = []
@@ -1087,7 +1105,7 @@ class RealtimeReceptionist(AIPhoneAgent):
         """A provider tool-call ID identifies one side effect, including reconnect retries."""
         mutations = {"book_appointment", "reschedule_appointment", "cancel_appointment", "confirm_appointment",
                      "take_message", "capture_lead", "notify_team", "transfer_to_human", "send_payment_link",
-                     "send_sms", "send_email", "create_business_request"}
+                     "send_sms", "send_email", "create_business_request", "schedule_test_drive"}
         if self.is_simulation or not invocation_id or name not in mutations or not self.user_id or self.user_id == "guest":
             return await self._run_tool_once(name, arguments)
         receipt_id = hashlib.sha256(json.dumps([self.user_id, self.call_id, invocation_id]).encode()).hexdigest()
@@ -1155,7 +1173,9 @@ class RealtimeReceptionist(AIPhoneAgent):
                 result = {"error": exc.message, "status": "PERMISSION_DENIED" if exc.status_code == 403 else "INTEGRATION_OFFLINE" if exc.status_code in (502, 503, 504) else "ACTION_FAILED"}
             except Exception:
                 logger.exception("Call %s: tool %s failed", self.call_id, name)
-                result = {"error": "That did not work. Apologise and offer to take a message for the team."}
+                result = {"error": "That did not work. Apologise and offer to take a message for the team.", "status": "ACTION_FAILED"}
+        if isinstance(result, dict) and "status" not in result and "transferred" not in result:
+            result["status"] = "ACTION_FAILED" if result.get("error") else "ACTION_SUCCESS"
         self.ai_actions.append({"tool": name, "arguments": args, "result": result, "at": utc_now().isoformat()})
         await self._save_progress()
         return result
@@ -1173,6 +1193,8 @@ class RealtimeReceptionist(AIPhoneAgent):
             "get_business_knowledge": "provide_pricing",
             "find_my_appointments": "access_account_information",
             "confirm_appointment": "access_account_information",
+            "schedule_test_drive": "book_appointment",
+            "lookup_vehicle_inventory": "provide_pricing",
         }.get(name)
         if name == "create_business_request":
             capability = {"task": "create_task", "service_ticket": "create_service_ticket", "quote": "provide_quote",
@@ -1286,7 +1308,14 @@ class RealtimeReceptionist(AIPhoneAgent):
         phone_to_use = caller_phone or self.caller_phone
         service = DealershipService(self.flow_service.db if self.flow_service else None)
         vehicles = await service.search_inventory(vehicle_query)
-        chosen_vehicle = vehicles[0] if vehicles else {"year": 2024, "make": "Vehicle", "model": vehicle_query, "price": 18500}
+        if not vehicles:
+            return {
+                "outcome": "not_found",
+                "status": "NO_AVAILABILITY",
+                "error": f"No vehicles matching '{vehicle_query}' were found in inventory.",
+                "note": "Tell the caller the vehicle is not in inventory and offer to have the sales desk follow up.",
+            }
+        chosen_vehicle = vehicles[0]
 
         booking_result = await self._tool_book_appointment(
             date=date,
@@ -1298,6 +1327,13 @@ class RealtimeReceptionist(AIPhoneAgent):
             appointment_type="Test Drive",
             caller_confirmed=True,
         )
+        if booking_result.get("outcome") != "booked":
+            return {
+                "outcome": "booking_failed",
+                "status": booking_result.get("status", "NO_AVAILABILITY"),
+                "error": booking_result.get("error", "Could not book the requested time slot for test drive."),
+                "appointment": booking_result,
+            }
 
         res = await service.confirm_test_drive(
             user_id=self.user_id,
@@ -1311,6 +1347,7 @@ class RealtimeReceptionist(AIPhoneAgent):
         )
         return {
             "outcome": "test_drive_scheduled",
+            "status": "ACTION_SUCCESS",
             "appointment": booking_result,
             "vehicle": res.get("vehicle"),
             "price": res.get("price"),
@@ -1729,7 +1766,16 @@ class RealtimeReceptionist(AIPhoneAgent):
             return True
         self.transferring = False
         await self._request_response(
-            {"type": "response.create", "response": {"instructions": "The transfer did not go through. Apologise briefly and offer to take a message for the team."}}
+            {
+                "type": "response.create",
+                "response": {
+                    "instructions": (
+                        "The transfer did not go through. Apologise politely, "
+                        "state that the team is temporarily unavailable on that line, and offer to take a "
+                        "detailed message or arrange a prompt callback."
+                    )
+                },
+            }
         )
         return False
 
@@ -1744,8 +1790,18 @@ class RealtimeReceptionist(AIPhoneAgent):
         industry_keywords = get_industry_template(call_settings.get("business_type")).get("emergency_keywords") or []
         custom = [kw for kw in (call_settings.get("emergency_keywords") or []) if kw and kw.strip()]
         lowered = text.lower()
+        negation_prefix = r"(?:don't|dont|do not|didn't|didnt|did not|no|not|without|never|neither|free of|negative for)\s+(?:have\s+|having\s+|feel\s+|feeling\s+|experiencing\s+|any\s+)?"
+
         for keyword in DEFAULT_EMERGENCY_KEYWORDS + industry_keywords + custom:
-            if keyword.lower() in lowered:
+            kw_clean = keyword.strip()
+            if not kw_clean:
+                continue
+            kw_lower = kw_clean.lower()
+            neg_pattern = rf"\b{negation_prefix}{re.escape(kw_lower)}\b"
+            if re.search(neg_pattern, lowered):
+                continue
+            pattern = rf"\b{re.escape(kw_lower)}\b"
+            if re.search(pattern, lowered) or (kw_lower in lowered and len(kw_lower.split()) > 1):
                 return keyword
         return None
 
@@ -1789,7 +1845,18 @@ class RealtimeReceptionist(AIPhoneAgent):
         except Exception:
             logger.warning("Call %s: could not notify the team of an emergency escalation", self.call_id, exc_info=True)
         await self._save_progress()
-        if call_settings.get("emergency_response_mode") == "direct_to_911":
+
+        NON_911_KEYWORDS = {
+            "arrested", "in police custody", "jail", "imminent court deadline", "warrant",
+            "irs audit tomorrow", "levy", "bank freeze", "lien deadline",
+            "knocked out tooth", "accident on test drive", "tow needed", "stolen vehicle",
+            "water leak", "burst pipe", "flooding", "sewage backup",
+        }
+        is_direct_911 = (
+            call_settings.get("emergency_response_mode") == "direct_to_911"
+            and matched_keyword.lower() not in NON_911_KEYWORDS
+        )
+        if is_direct_911:
             await self._announce_emergency_911()
         elif not self.transferring:
             await self.run_tool("transfer_to_human", {"reason": f"emergency keyword detected: {matched_keyword}"})

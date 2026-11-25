@@ -106,12 +106,19 @@ class ConversationDeliveryMixin:
             return False
         media_urls = [a["url"] for a in attachments or [] if isinstance(a, dict) and a.get("url")]
         try:
-            response = await CallService().send_sms(
-                to_number=to_number,
-                message=content,
-                from_number=from_number,
-                media_urls=media_urls or None,
-            )
+            if media_urls:
+                response = await CallService().send_sms(
+                    to_number=to_number,
+                    message=content,
+                    from_number=from_number,
+                    media_urls=media_urls,
+                )
+            else:
+                response = await CallService().send_sms(
+                    to_number=to_number,
+                    message=content,
+                    from_number=from_number,
+                )
         except AppException as exc:
             errors.append(f"SMS could not be sent: {exc.message}")
             return False

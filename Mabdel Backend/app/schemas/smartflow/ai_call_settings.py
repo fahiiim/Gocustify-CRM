@@ -175,6 +175,8 @@ class InsurancePlan(BaseModel):
     network_status: InsuranceNetworkStatus = "unknown"
     verification_required: bool = False
     active: bool = True
+    aliases: list[str] = Field(default_factory=list)
+    notes: str | None = Field(default=None, max_length=500)
     effective_from: date | None = None
     effective_until: date | None = None
     last_verified_at: date | None = None

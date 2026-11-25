@@ -191,9 +191,45 @@ INDUSTRY_TEMPLATES: dict[str, dict] = {
 }
 
 
+def normalize_industry_key(business_type: str | None) -> str:
+    """Map common display names, aliases, and user input strings to canonical industry keys."""
+    raw = (business_type or "").strip()
+    if not raw:
+        return UNRECOGNIZED_BUSINESS_TYPE_FALLBACK
+    if raw in INDUSTRY_TEMPLATES:
+        return raw
+    lowered = raw.lower()
+    if "dent" in lowered:
+        return "Dental Clinic"
+    if "medic" in lowered or "doctor" in lowered or "physician" in lowered:
+        return "Medical Clinic"
+    if "chiro" in lowered:
+        return "Chiropractor"
+    if "wellness" in lowered:
+        return "Wellness Center"
+    if "law" in lowered or "legal" in lowered or "attorney" in lowered:
+        return "Law Firm"
+    if "real estate" in lowered or "realtor" in lowered:
+        return "Real Estate Agency"
+    if "home" in lowered or "plumb" in lowered or "hvac" in lowered or "electric" in lowered or "roof" in lowered:
+        return "Home Services (Plumbing, Electrical, HVAC)"
+    if "deal" in lowered or "car" in lowered or "auto" in lowered:
+        return "Car Dealership"
+    if "account" in lowered or "bookkeep" in lowered or "cpa" in lowered or "tax" in lowered:
+        return "Accounting / Bookkeeping Firm"
+    if "vet" in lowered or "animal" in lowered:
+        return "Veterinary Clinic"
+    for key in INDUSTRY_TEMPLATES:
+        if key.lower() == lowered:
+            return key
+    return UNRECOGNIZED_BUSINESS_TYPE_FALLBACK
+
+
 def get_industry_template(business_type: str | None) -> dict:
-    """Named types match exactly; unlisted types fall back to generic template."""
-    return INDUSTRY_TEMPLATES.get((business_type or "").strip()) or INDUSTRY_TEMPLATES[UNRECOGNIZED_BUSINESS_TYPE_FALLBACK]
+    """Exact named types match directly; case/whitespace mismatches or unlisted types fall back to generic template."""
+    if not business_type or business_type not in INDUSTRY_TEMPLATES:
+        return INDUSTRY_TEMPLATES[UNRECOGNIZED_BUSINESS_TYPE_FALLBACK]
+    return INDUSTRY_TEMPLATES[business_type]
 
 
 INSURANCE_ELIGIBLE_BUSINESS_TYPES = {"Dental Clinic", "Medical Clinic", "Chiropractor", "Wellness Center"}
@@ -219,11 +255,13 @@ INSURANCE_RECOGNITION_DICTIONARY: dict[str, list[str]] = {
 
 
 def is_insurance_eligible_business_type(business_type: str | None) -> bool:
-    return (business_type or "").strip() in INSURANCE_ELIGIBLE_BUSINESS_TYPES
+    normalized = normalize_industry_key(business_type)
+    return normalized in INSURANCE_ELIGIBLE_BUSINESS_TYPES
 
 
 def get_insurance_recognition_dictionary(business_type: str | None) -> list[str]:
-    return INSURANCE_RECOGNITION_DICTIONARY.get((business_type or "").strip(), [])
+    normalized = normalize_industry_key(business_type)
+    return INSURANCE_RECOGNITION_DICTIONARY.get(normalized, [])
 
 
 INDUSTRY_PRESETS: dict[str, dict] = {
@@ -666,8 +704,8 @@ INDUSTRY_PRESETS: dict[str, dict] = {
 
 def get_industry_preset(business_type: str | None) -> dict:
     """Return the rich preset for an industry, falling back to General Business."""
-    cleaned = (business_type or "").strip()
-    return INDUSTRY_PRESETS.get(cleaned) or INDUSTRY_PRESETS["Other"]
+    normalized = normalize_industry_key(business_type)
+    return INDUSTRY_PRESETS.get(normalized, INDUSTRY_PRESETS["Other"])
 
 
 def list_all_industry_presets() -> list[dict]:

@@ -19,6 +19,8 @@ from app.services.push_notification_service import PushNotificationService
 
 
 def test_email_service_has_a_generic_send_method_the_task_can_call(monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "RESEND_API_KEY", "re_test_key")
     # RESEND_API_KEY is a real, live key in this dev environment - mock the
     # actual send call so this test can't fire a real email (confirmed the
     # hard way: this failed against the live Resend API on the first attempt).

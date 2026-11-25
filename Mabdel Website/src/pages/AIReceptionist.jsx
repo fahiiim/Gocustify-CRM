@@ -355,15 +355,11 @@ export default function AIReceptionist() {
 
   // Apply Industry Template
   const applyIndustryTemplate = async (industryKey, existingData = null, showConfirm = true, overrideName = null) => {
-    if (showConfirm && !window.confirm(`Switch template to ${industryKey}? This will preload recommended defaults for this industry.`)) {
-      return;
-    }
-
     try {
       const res = await smartflowApi.getIndustryTemplate(industryKey).catch(() => null);
       const preset = res?.data?.data || null;
 
-      const normKey = industryKey.includes('Dentist') || industryKey === 'Dental Clinic' ? 'Dentist (Dental Clinic)'
+      const normKey = industryKey.includes('Dentist') || industryKey === 'Dental Clinic' ? 'Dental Clinic'
         : industryKey.includes('Law') ? 'Law Firm'
         : industryKey.includes('Home') ? 'Home Services (Plumbing, Electrical, HVAC)'
         : industryKey.includes('Dealer') || industryKey.includes('Car') ? 'Car Dealership'
@@ -383,22 +379,28 @@ export default function AIReceptionist() {
         setTemplateSummary(preset.summary || `Preloaded defaults for ${normKey}`);
         setTemplateAppliedBadge('Template Applied');
 
-        // Set Services (unless user already customized them)
-        if (!servicesList.length || showConfirm) {
+        // Set Services (preserve user saved services on load)
+        if (!showConfirm && existingData?.industry_conditional_data?.services?.length) {
+          setServicesList(existingData.industry_conditional_data.services);
+        } else if (!servicesList.length || showConfirm) {
           setServicesList(preset.services || [
             { id: '1', name: 'General Consultation', duration_minutes: 30, provider_role: 'Specialist', active: true },
           ]);
         }
 
-        // Set Staff
-        if (!staffList.length || showConfirm) {
+        // Set Staff (preserve user saved staff on load)
+        if (!showConfirm && existingData?.industry_conditional_data?.staff?.length) {
+          setStaffList(existingData.industry_conditional_data.staff);
+        } else if (!staffList.length || showConfirm) {
           setStaffList(preset.staff || [
             { id: '1', name: 'Front Desk', role: 'Intake & Scheduling', active: true },
           ]);
         }
 
-        // Set Insurance or Conditional Data
-        if (preset.insurance_plans) {
+        // Set Insurance (preserve user saved insurance plans on load)
+        if (!showConfirm && existingData?.insurance_plans?.length) {
+          setInsurancePlans(existingData.insurance_plans);
+        } else if (preset.insurance_plans) {
           setInsurancePlans(preset.insurance_plans);
         } else {
           setInsurancePlans([]);
@@ -408,8 +410,23 @@ export default function AIReceptionist() {
           setConditionalData(preset.conditional_data);
         }
 
-        // Set Custom Phrases
-        setCustomPhrases(preset.custom_phrases || ['Our office', 'Our team', 'Your appointment']);
+        // Set Custom Phrases (preserve user saved custom phrases on load)
+        if (!showConfirm && existingData?.custom_phrases?.length) {
+          setCustomPhrases(existingData.custom_phrases);
+        } else {
+          setCustomPhrases(preset.custom_phrases || ['Our office', 'Our team', 'Your appointment']);
+        }
+
+        // Set Emergency Keywords & Mode
+        if (!showConfirm && existingData?.emergency_keywords?.length) {
+          setEmergencyKeywords(existingData.emergency_keywords);
+        } else if (preset.emergency_keywords?.length) {
+          setEmergencyKeywords(preset.emergency_keywords);
+        }
+
+        if (!showConfirm && existingData?.emergency_response_mode) {
+          setEmergencyMode(existingData.emergency_response_mode === 'direct_to_911' ? 'direct_to_911' : 'take_message');
+        }
 
         // Set Sample Test Queries with dynamic business name
         if (preset.sample_test_queries && preset.sample_test_queries.length > 0) {
@@ -761,11 +778,11 @@ export default function AIReceptionist() {
               <span className="text-xs text-slate-400">Business Type (Industry):</span>
               <div className="relative">
                 <select
-                  value={selectedIndustry}
+                  value={selectedIndustry === 'Dentist (Dental Clinic)' ? 'Dental Clinic' : selectedIndustry}
                   onChange={(e) => applyIndustryTemplate(e.target.value)}
                   className="bg-[#1f1f2e] text-white text-xs font-medium py-1.5 pl-3 pr-8 rounded-none border border-[#35354e] focus:outline-none focus:border-purple-500 cursor-pointer appearance-none"
                 >
-                  <option value="Dentist (Dental Clinic)">Dentist (Dental Clinic)</option>
+                  <option value="Dental Clinic">Dentist (Dental Clinic)</option>
                   <option value="Medical Clinic">Medical Clinic</option>
                   <option value="Chiropractor">Chiropractor</option>
                   <option value="Wellness Center">Wellness Center</option>
@@ -1630,25 +1647,59 @@ export default function AIReceptionist() {
                   <p className="text-xs text-slate-400 mb-3">Set after-hours behavior and emergency escalation.</p>
 
                   <div className="space-y-2 text-xs">
-                    <div className="flex items-center gap-2 text-slate-300">
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1 font-medium">Emergency Escalation Mode:</label>
+                      <select
+                        value={emergencyMode.includes('911') ? 'direct_to_911' : 'take_message'}
+                        onChange={(e) => setEmergencyMode(e.target.value === 'direct_to_911' ? 'direct_to_911' : 'take_message')}
+                        className="w-full bg-[#1b1b2a] text-white text-xs px-2.5 py-1.5 rounded-none border border-[#35354e] focus:outline-none focus:border-purple-500 cursor-pointer"
+                      >
+                        <option value="take_message">Transfer to office / on-call (Standard)</option>
+                        <option value="direct_to_911">Direct to 911 (Life-threatening healthcare only)</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-300 pt-1">
                       <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                       <span>After-hours: Take a message & notify team</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-300">
-                      <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                      <span>Emergency: Transfer to on-call / office number</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-[#232334] text-xs">
-                  <span className="text-slate-400 text-[11px]">Emergency Keywords:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-slate-400 text-[11px] font-medium">Emergency Keywords:</span>
+                    <span className="text-[10px] text-slate-500">{emergencyKeywords.length} active</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mb-2">
                     {emergencyKeywords.map((kw) => (
-                      <span key={kw} className="px-2 py-0.5 rounded-none text-[10px] bg-red-950/60 text-red-300 border border-red-900/60">
+                      <span key={kw} className="px-2 py-0.5 rounded-none text-[10px] bg-red-950/60 text-red-300 border border-red-900/60 inline-flex items-center gap-1">
                         {kw}
+                        <button
+                          type="button"
+                          onClick={() => removeEmergencyKeyword(kw)}
+                          className="text-red-400 hover:text-red-200 transition cursor-pointer"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
                       </span>
                     ))}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={newKeywordInput}
+                      onChange={(e) => setNewKeywordInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmergencyKeyword(); } }}
+                      placeholder="Add phrase (e.g. tooth trauma)..."
+                      className="flex-1 bg-[#1b1b2a] text-white text-xs px-2.5 py-1 rounded-none border border-[#35354e] focus:outline-none focus:border-purple-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={addEmergencyKeyword}
+                      className="px-2.5 py-1 rounded-none bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition cursor-pointer"
+                    >
+                      Add
+                    </button>
                   </div>
                 </div>
               </div>

@@ -152,29 +152,9 @@ class DealershipService:
             matches.sort(key=lambda x: x[0], reverse=True)
             return [car for _, car in matches]
 
-        # 4. If specific year + make was requested not in lot, synthesize clean record
-        # E.g., user asks for 2010 Toyota Corolla
-        year_match = re.search(r"\b(19\d\d|20\d\d)\b", query_clean)
-        year = int(year_match.group(1)) if year_match else 2022
-        make = "Toyota" if "toyota" in query_clean else "Honda" if "honda" in query_clean else "Vehicle"
-        model = "Corolla" if "corolla" in query_clean else "Civic" if "civic" in query_clean else "Sedan"
-
-        return [
-            {
-                "year": year,
-                "make": make,
-                "model": model,
-                "trim": "Standard",
-                "price": 9500 if year <= 2012 else 18500 if year <= 2018 else 26900,
-                "mileage": f"{(2024 - year) * 11500:,} mi",
-                "vin": f"4T1BU{year}AZ{abs(hash(query_clean)) % 900000 + 100000}",
-                "status": "Available for Test Drive",
-                "color": "Silver / Grey",
-                "transmission": "Automatic",
-                "image_url": "https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=800&auto=format&fit=crop&q=80",
-                "details_url": f"/inventory/{year}-{make.lower()}-{model.lower()}",
-            }
-        ]
+        # In strict adherence to §25 anti-hallucination guardrails: do not synthesize
+        # or invent nonexistent vehicles, specs, or prices if not found on the lot or website.
+        return []
 
     async def _scrape_dealership_website(self, url: str, tokens: list[str]) -> list[dict[str, Any]] | None:
         """Lightweight live scraper for dealership website inventory."""

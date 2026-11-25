@@ -79,11 +79,9 @@ def require_role(allowed_roles: list[str]) -> Callable:
         role_slugs = await rbac.get_user_role_slugs(user_id, legacy_role)
 
         # Allow if any role slug is in allowed list OR has high-enough hierarchy
-        if role_slugs & set(allowed_roles):
-            return current_user
-
-        user_level = rbac.highest_hierarchy(role_slugs)
-        if user_level > min_level:
+        if (role_slugs & set(allowed_roles)) or (rbac.highest_hierarchy(role_slugs) > min_level):
+            highest_slug = max(role_slugs, key=lambda s: ROLE_HIERARCHY.get(s, 0), default=legacy_role)
+            current_user["primary_role"] = highest_slug
             return current_user
 
         raise AppException(

@@ -216,6 +216,9 @@ class AICallSettingsService(SmartFlowBase):
         # a custom greeting back to the built-in one — so it is not filtered out.
         merged = {**current, **payload}
         merged.pop("knowledge_documents", None)
+        if "business_type" in payload and payload["business_type"]:
+            from app.services.smartflow.industry_templates import normalize_industry_key
+            merged["business_type"] = normalize_industry_key(payload["business_type"])
         for plan in merged.get("insurance_plans") or []:
             for key in ("effective_from", "effective_until", "last_verified_at"):
                 value = plan.get(key)

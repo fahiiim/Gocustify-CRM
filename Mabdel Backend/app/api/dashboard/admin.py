@@ -163,8 +163,14 @@ async def update_user_status(
     if actor_role != "super_admin":
         from app.models.rbac_models import ROLE_HIERARCHY
         from app.core.exceptions import AppException
+        from app.services.rbac_service import RBACService
         target = await service.get_user_by_id(user_id)
-        target_role = getattr(target, "role", None) or "user"
+        raw_role = getattr(target, "role", None) or "user"
+        rbac = RBACService(service.repository.db)
+        target_roles = await rbac.get_user_role_slugs(user_id, raw_role)
+        target_role = max(target_roles, key=lambda s: ROLE_HIERARCHY.get(s, 0), default=raw_role)
+        if target_role == "super_admin":
+            raise AppException(status_code=403, code="INSUFFICIENT_PRIVILEGES", message="Cannot modify or block a Super Admin user.")
         if ROLE_HIERARCHY.get(target_role, 0) >= ROLE_HIERARCHY.get(actor_role, 0):
             raise AppException(status_code=403, code="INSUFFICIENT_PRIVILEGES", message="Cannot modify user with equal or higher role than yourself.")
 
@@ -188,8 +194,14 @@ async def update_user(
     if actor_role != "super_admin":
         from app.models.rbac_models import ROLE_HIERARCHY
         from app.core.exceptions import AppException
+        from app.services.rbac_service import RBACService
         target = await service.get_user_by_id(user_id)
-        target_role = getattr(target, "role", None) or "user"
+        raw_role = getattr(target, "role", None) or "user"
+        rbac = RBACService(service.repository.db)
+        target_roles = await rbac.get_user_role_slugs(user_id, raw_role)
+        target_role = max(target_roles, key=lambda s: ROLE_HIERARCHY.get(s, 0), default=raw_role)
+        if target_role == "super_admin":
+            raise AppException(status_code=403, code="INSUFFICIENT_PRIVILEGES", message="Cannot modify or block a Super Admin user.")
         if ROLE_HIERARCHY.get(target_role, 0) >= ROLE_HIERARCHY.get(actor_role, 0):
             raise AppException(status_code=403, code="INSUFFICIENT_PRIVILEGES", message="Cannot modify user with equal or higher role than yourself.")
 
@@ -992,6 +1004,20 @@ async def block_user(
     """
     Block a user.
     """
+    actor_role = current_user.get("primary_role") or current_user.get("role", "user")
+    if actor_role != "super_admin":
+        from app.models.rbac_models import ROLE_HIERARCHY
+        from app.core.exceptions import AppException
+        from app.services.rbac_service import RBACService
+        target = await service.get_user_by_id(user_id)
+        raw_role = getattr(target, "role", None) or "user"
+        rbac = RBACService(service.repository.db)
+        target_roles = await rbac.get_user_role_slugs(user_id, raw_role)
+        target_role = max(target_roles, key=lambda s: ROLE_HIERARCHY.get(s, 0), default=raw_role)
+        if target_role == "super_admin":
+            raise AppException(status_code=403, code="INSUFFICIENT_PRIVILEGES", message="Cannot modify or block a Super Admin user.")
+        if ROLE_HIERARCHY.get(target_role, 0) >= ROLE_HIERARCHY.get(actor_role, 0):
+            raise AppException(status_code=403, code="INSUFFICIENT_PRIVILEGES", message="Cannot modify user with equal or higher role than yourself.")
     success = await service.toggle_user_status(user_id, "blocked")
     return BaseResponse(data=success, message="User blocked successfully")
 

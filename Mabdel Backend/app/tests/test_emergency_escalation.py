@@ -228,5 +228,54 @@ def test_take_message_mode_is_the_default_and_still_transfers(client, mock_db, m
     assert control.transfers == [("call-rt", "+15559990000")]
 
 
+def test_negated_emergency_phrases_do_not_match(client, mock_db, monkeypatch):
+    owner_id = _business(client, mock_db, monkeypatch, "emergency-negation@example.com")
+    agent = _receptionist(mock_db, owner_id, FakeOpenAI())
+
+    assert asyncio.run(agent._matched_emergency_keyword("I don't have chest pain, just a routine checkup question")) is None
+    assert asyncio.run(agent._matched_emergency_keyword("No heart attack, just asking your hours")) is None
+    assert asyncio.run(agent._matched_emergency_keyword("I am not bleeding")) is None
+    assert asyncio.run(agent._matched_emergency_keyword("he does not have trouble breathing")) is None
+
+
+def test_dental_urgent_and_legal_emergencies_do_not_announce_911_even_in_911_mode(client, mock_db, monkeypatch):
+    owner_id = _business(
+        client, mock_db, monkeypatch, "emergency-dental-non-911@example.com",
+        business_type="Dental Clinic", transfer_number="+15559990000", emergency_response_mode="direct_to_911",
+    )
+    socket = FakeOpenAI()
+    control = FakeCallControl()
+
+    async def run():
+        agent = _receptionist(mock_db, owner_id, socket, control=control)
+        await agent.connect()
+        await agent.start(lambda message: _noop())
+        await _greeting_done(socket)
+        await socket.emit({"type": "conversation.item.input_audio_transcription.completed", "transcript": "My child had a sports injury with a knocked out tooth"})
+        await _until(lambda: len(control.transfers) == 1)
+        await agent.close()
+
+    asyncio.run(mock_db.call_logs.insert_one({"twilio_call_sid": "call-rt", "user_id": owner_id}))
+    asyncio.run(run())
+
+    # Knocked-out tooth is urgent dental care requiring immediate office triage/transfer, not a 911 announcement
+    assert control.transfers == [("call-rt", "+15559990000")]
+    forced_911 = [event for event in socket.of_type("response.create") if "911" in (event.get("response") or {}).get("instructions", "")]
+    assert len(forced_911) == 0
+
+
+def test_custom_phrases_rendered_in_instructions(client, mock_db, monkeypatch):
+    owner_id = _business(
+        client, mock_db, monkeypatch, "custom-phrases@example.com",
+        custom_phrases=["same-day crown", "mini split AC", "invisalign consultation"]
+    )
+    agent = _receptionist(mock_db, owner_id, FakeOpenAI())
+    instructions = asyncio.run(agent.build_instructions())
+
+    assert "same-day crown" in instructions
+    assert "mini split AC" in instructions
+    assert "invisalign consultation" in instructions
+
+
 async def _noop():
     return None
