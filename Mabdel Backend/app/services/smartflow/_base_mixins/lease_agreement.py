@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from io import BytesIO
 
 from pymongo import ReturnDocument
 
 from app.core.config import settings
 from app.core.exceptions import AppException
-from app.utils.helpers import utc_now
+from app.utils.helpers import utc_now, parse_decimal_string
 
 
 class LeaseAgreementMixin:
@@ -147,11 +147,12 @@ class LeaseAgreementMixin:
             if "security_deposit_cents" in payload
             else None if "security_deposit" in payload else details.get("security_deposit_cents")
         )
+        has_explicit_rent = ("monthly_rent_cents" in payload) or ("monthly_rent" in payload)
         amount_cents = self._amount_to_cents(
             rent_cents_source,
             payload.get("monthly_rent"),
         )
-        if amount_cents == 0 and payload.get("prompt") and not existing:
+        if not has_explicit_rent and amount_cents == 0 and payload.get("prompt") and not existing:
             amount_cents = self._prompt_money_to_cents(payload["prompt"])
         deposit_cents = self._amount_to_cents(
             deposit_cents_source,
@@ -563,14 +564,24 @@ class LeaseAgreementMixin:
             return int(cents_value)
         if amount_value is None or amount_value == "":
             return 0
+        parsed = parse_decimal_string(amount_value)
+        if parsed is not None:
+            return int(round(parsed * 100))
         return int(round(float(amount_value) * 100))
 
     @staticmethod
     def _prompt_money_to_cents(prompt: str) -> int:
-        match = re.search(r"\$\s?([0-9][0-9,]*(?:\.[0-9]{1,2})?)", prompt)
+        # Match only an amount identified as rent, e.g. "rent is $1,200", "$1200/month", "for $1200/mo"
+        match = re.search(r"(?:rent(?:\s+is|\s+of)?|for)\s*\$?\s*([0-9][0-9.,]*)(?:\s*(?:/|per)\s*mo(?:nth)?)?", prompt, re.IGNORECASE)
         if not match:
-            return 0
-        return int(round(float(match.group(1).replace(",", "")) * 100))
+            match = re.search(r"\$\s?([0-9][0-9.,]*)", prompt)
+            if not match or "deposit" in prompt.lower()[:match.start()]:
+                return 0
+        raw = match.group(1)
+        parsed = parse_decimal_string(raw)
+        if parsed is not None:
+            return int(round(parsed * 100))
+        return 0
 
     @staticmethod
     def _money_label(cents: int | None, currency: str, suffix: str = "") -> str:
@@ -588,10 +599,12 @@ class LeaseAgreementMixin:
         end = LeaseAgreementMixin._agreement_date_value(end_value)
         if not start or not end:
             return None
-        months = (end.year - start.year) * 12 + end.month - start.month
-        if end.day >= start.day:
-            months += 1
-        return max(1, months)
+        # LS-05: Accurate calendar-month calculation where end_date represents the completion of the term
+        end_plus_one = end + timedelta(days=1)
+        months = (end_plus_one.year - start.year) * 12 + (end_plus_one.month - start.month)
+        if months <= 0:
+            months = 1
+        return months
 
     @staticmethod
     def _lease_duration_label(start_value, end_value) -> str:
