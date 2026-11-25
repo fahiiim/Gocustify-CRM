@@ -244,6 +244,7 @@ class ConversationMixin:
                     group_filters["user_id"] = safe.get("user_id")
                 group = await self.db.groups.find_one(group_filters)
             group_members = (group or {}).get("member_ids", safe.get("member_ids", []))
+            safe["group_id"] = str(group["_id"]) if group else None
             safe["participant_preview"] = await self._group_participant_preview(
                 viewer_id or safe.get("user_id", ""),
                 group_members,
@@ -983,7 +984,7 @@ class ConversationMixin:
                                 "phone": colleague.get("phone_no") or colleague.get("phone_number"),
                                 "avatar_url": colleague.get("avatar_url"),
                                 "presence": colleague.get("presence", "offline"),
-                                "role": "admin" if str(colleague["_id"]) in admin_ids else "member",
+                                "role": "owner" if (str(colleague["_id"]) == user_id or member_id == user_id) else ("admin" if str(colleague["_id"]) in admin_ids else "member"),
                                 "status": colleague.get("status", "active"),
                                 "is_self": False,
                             }
@@ -1070,6 +1071,11 @@ class ConversationMixin:
                         message="Only your contacts and colleagues can be added to a group.",
                     )
             normalized.append(member_id)
+            # BE-4 / CB-3: Resolve contact to linked platform user ID and include it so group authorization checks by user ID succeed
+            if contact:
+                target_user_id = await self._resolve_group_member_user_id(member_id)
+                if target_user_id and target_user_id not in normalized:
+                    normalized.append(target_user_id)
         return normalized
 
     ROLE_GROUP_SLUGS = {"manager", "staff", "assistant"}
