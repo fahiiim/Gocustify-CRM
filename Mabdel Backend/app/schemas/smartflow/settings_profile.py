@@ -56,7 +56,7 @@ class BusinessProfileUpdateRequest(BaseModel):
             return None
         cleaned = value.strip()
         if not cleaned:
-            return None
+            return ""
         if "://" not in cleaned:
             cleaned = f"https://{cleaned}"
         if "." not in cleaned.split("://", 1)[1]:
