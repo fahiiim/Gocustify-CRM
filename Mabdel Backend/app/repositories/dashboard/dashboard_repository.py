@@ -419,10 +419,11 @@ class DashboardRepository:
         )
         return result.modified_count > 0 or result.upserted_id is not None
 
-    async def get_all_chats(self) -> list[dict[str, Any]]:
-        sessions = await self.db.support_sessions.find(
-            {"status": {"$ne": "closed"}}
-        ).sort("updated_at", -1).to_list(length=100)
+    async def get_all_chats(self, organization_id: str | None = None) -> list[dict[str, Any]]:
+        query: dict[str, Any] = {"status": {"$ne": "closed"}}
+        if organization_id:
+            query["organization_id"] = organization_id
+        sessions = await self.db.support_sessions.find(query).sort("updated_at", -1).to_list(length=100)
 
         session_ids = [str(s["_id"]) for s in sessions]
         # Tiebreak on _id too: the welcome message and the user's first reply are
