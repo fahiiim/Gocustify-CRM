@@ -1,0 +1,73 @@
+<USER_REQUEST>
+my App developer have give me thhis report fo backend issues, find that things and fix the issues which is legitimate. and update the code of the backend according to the issues:
+Lease backend change
+
+
+Order
+Issue
+Affected feature
+Backend fix required
+1
+LS-01
+PDF download and DocuSign
+Generate complete, multi-page Unicode PDFs from the same lease revision used for signing.
+2
+LS-02
+Signed lease editing, deletion, and signing
+Preserve immutable signed revisions, prevent improper deletion, and enforce atomic signature transitions.
+3
+LS-15
+Lease access, private files, and public signing
+Enforce document category and permissions consistently. Limit public responses to the fields signers need.
+4
+LS-17
+Signer identity, consent, and required signatures
+Verify each signer’s role, record consent, and complete the lease only after all required parties sign.
+5
+LS-06
+Active, expired, and signing eligibility
+Apply consistent start-date, expiry, and action rules on the server.
+6
+LS-08
+Saved rent and deposit edits
+Give newly submitted amounts precedence over stored values and keep document terms in sync.
+7
+LS-13
+Renewal
+Enforce eligibility, create and link one successor atomically, and preserve the correct counterparty.
+8
+LS-03
+AI Improve preview and acceptance
+Give eligible edit-only users access to draft preview and reject acceptance when the saved revision has changed.
+9
+LS-19
+Draft generation and lease creation
+Preserve explicitly entered zero rent and prevent duplicate records after an ambiguous retry.
+10
+LS-10
+Drawn signature and native signed PDF
+Accept and privately store signature images, then generate a native signed PDF.
+11
+LS-11
+Native signature email
+Send the Lease-specific signing link and track delivery outcomes and retries.
+12
+LS-18
+DocuSign status and completion
+Bind envelopes to the sending connection, preserve provider timestamps, authenticate and safely retry webhooks, and revoke superseded native links.
+13
+LS-05
+Lease duration
+Correct the server’s calendar-month calculation. Mobile date display and validation are already fixed.
+14
+LS-21
+Generated terms and automated review
+Reflect the configured signature requirements and report only what the automated checks establish.
+15
+LS-23
+Lease list pagination and counts
+Stabilize pagination and replace capped summary reads with accurate aggregation.
+
+
+
+
