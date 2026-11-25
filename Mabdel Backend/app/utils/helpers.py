@@ -68,3 +68,70 @@ def mask_email(email: str) -> str:
     else:
         masked_name = f"{name[:2]}***"
     return f"{masked_name}@{domain}"
+
+
+def parse_decimal_string(val: Any) -> float | None:
+    """Parse a numeric string or number into a float, supporting both US and European
+    decimal and thousands separator styles (e.g. '1,5', '1.234,50', '1,234.50').
+    Rejects booleans, NaN/Inf, malformed and ambiguous strings (like '1,234')."""
+    import math
+    import re
+
+    if val is None or isinstance(val, bool):
+        return None
+    if isinstance(val, (int, float)):
+        if math.isnan(val) or math.isinf(val):
+            return None
+        return float(val)
+    s = str(val).strip().lstrip("$€£¥").strip()
+    if not s or ",," in s or ".." in s:
+        return None
+
+    # German/European style: 1.234,50 or 1.000.000,50
+    if re.match(r"^\d{1,3}(\.\d{3})+,\d+$", s):
+        clean = s.replace(".", "").replace(",", ".")
+        try:
+            return float(clean)
+        except ValueError:
+            return None
+
+    # US/UK style: 1,234.50 or 1,000,000.50
+    if re.match(r"^\d{1,3}(,\d{3})+\.\d+$", s):
+        clean = s.replace(",", "")
+        try:
+            return float(clean)
+        except ValueError:
+            return None
+
+    # Single comma, no dot: e.g. '1,5' or '1,50' or '0,75' -> European decimal
+    if "," in s and "." not in s:
+        parts = s.split(",")
+        if len(parts) == 2:
+            # Reject ambiguous strings such as '1,234' with exactly 3 trailing digits
+            if len(parts[1]) == 3:
+                return None
+            try:
+                return float(s.replace(",", "."))
+            except ValueError:
+                return None
+        return None
+
+    # Single dot, no comma: e.g. '1.5' or '1234.50'
+    if "." in s and "," not in s:
+        parts = s.split(".")
+        if len(parts) == 2:
+            try:
+                return float(s)
+            except ValueError:
+                return None
+        return None
+
+    # Plain integer digits: e.g. '1500'
+    if re.match(r"^\d+$", s):
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
+    return None
+
