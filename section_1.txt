@@ -1,0 +1,200 @@
+# Message Tab: Backend Fix Requirements
+
+
+This document covers only issues that need backend changes. The source audit is `../MOBILE_MESSAGE_TAB_AUDIT.md` (2026-11-22); the mobile fixes are in `MESSAGE_TAB_MOBILE_FIX_REPORT.md`.
+
+
+No backend code, schema or data was changed.
+
+
+**Evidence.** The "Probe" references are throwaway pytest files run against the backend in-process on the project's own mongomock fixtures (`app/tests/conftest.py`), with every provider faked:
+
+
+- `audit_probe_test.py`: P1–P8, from the audit.
+- `mobile_fix_probe_test.py`: F1–F5, re-run after the mobile fixes.
+
+
+Neither file is in any repository.
+
+
+Paths are relative to `Mabdel Backend/app/`.
+
+
+---
+
+
+## Critical
+
+
+### BE-1: A "group" conversation can pull users from another business into a thread
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | J2 (BF1) |
+| Severity | **Critical**: authorization / privacy |
+| Current behaviour | `POST /api/v1/smartflow/conversations` with `type:"group"` and any user IDs in `member_ids` returns 201. The thread appears in those users' inboxes, and they can read and post in it. |
+| Expected | The same reachability rule as for `type:"direct"`: a colleague in the same organization, or a person saved as a contact. Groups should be created through `/groups`. |
+| Confirmed root cause | `ConversationCoreMixin.create_conversation` (`services/smartflow/conversation/core.py:79-84`) calls `_assert_members_share_organization` only when `conversation_type == "direct"`. `_get_accessible_conversation` path 4 (`services/smartflow/_base_mixins/access.py:102`) then grants access to anyone listed in `member_ids`. |
+| Evidence | Probe P8: `direct` with a stranger's ID → 403. `group` → **201**. Thread in the stranger's inbox: `True`. Stranger `GET …/messages` → **200**. |
+| Mobile usage | After this fix pass the mobile app no longer calls this. `GroupChatScreen` used to fall back to `POST /conversations {type:"group"}`, and that fallback was removed. The endpoint is still open to any API client. |
+| Endpoint | `POST /api/v1/smartflow/conversations` (`api/v1/endpoints/smartflow/conversations.py:176-184`) |
+| Data | `conversations.member_ids`, `conversations.organization_id` |
+| Why mobile cannot fix it | This is server-side authorization. |
+| Required change | On the public endpoint, either reject `type:"group"` (create groups only through `POST /groups`), or run `_assert_members_share_organization` on every member that is a valid user ObjectId, whatever the type. Stamp `organization_id`. Add a regression test equivalent to P8. |
+| Dependent mobile workflows | None functionally. This is about data exposure in every user's inbox. |
+| Priority / blocks production | P0. **Blocks production readiness.** |
+
+
+---
+
+
+## High
+
+
+### BE-2: Outbound messages trust the client's `platform` and `contact_id`
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | C3 (BF2). Also affects D1 and G9. |
+| Severity | High (integrity: a reply is stored as "sent" without being delivered) |
+| Current behaviour | `create_message` stores `platform` and `contact_id` exactly as the client sends them. Two cases fail: <br>1. `platform:"ai"` in a WhatsApp thread is stored as `sent` and **never delivered**, because `_deliver_outbound` returns True for `ai`. <br>2. The correct platform without `contact_id` fails WhatsApp, Messenger, Instagram and email delivery ("no … address"). |
+| Expected | For a customer conversation, the server takes the channel and recipient from the conversation, and rejects a mismatched platform. |
+| Confirmed root cause | `messages.py:56-57` (`"contact_id": payload.get("contact_id")`, `"platform": payload["platform"]`). `delivery.py:39-40` skips `ai`/`internal`. `delivery.py:349-358` needs `contact_id`. |
+| Evidence | Probe P1: the old mobile body gave `sent` / `ai` with 0 provider calls. No `contact_id` gave `failed`. With `contact_id` the message was delivered. After the mobile fix, probe F1 shows WhatsApp delivered and probe F2 shows SMS delivered. |
+| Mobile usage | Fixed on mobile: it now sends the conversation's platform and `contact_id` (`src/utils/chatThread.js` `buildOutgoingRequest`). The **website still omits `contact_id`** (`Mabdel Website/src/pages/UnifiedConversations.jsx:312`), so its WhatsApp, Messenger, Instagram and email replies remain affected. |
+| Endpoints | `POST /api/v1/smartflow/messages`, `POST /api/v1/smartflow/messages/{id}/reply` |
+| Service | `ConversationMessagesMixin.create_message`, `reply_to_message`, `ConversationDeliveryMixin._finalize_outbound_delivery` |
+| Data | `conversations.platform`, `conversations.contact_id`, `messages.status` |
+| Why mobile alone is not enough | The server must not let any client turn a customer reply into an undelivered message that reports success. Other clients (the website) still omit `contact_id`. |
+| Required change | In `create_message`, when the conversation is a customer conversation (`_is_customer_conversation`): <br>1. Default `contact_id` to `conversation["contact_id"]`. <br>2. Reject (400) or override a `platform` that differs from `conversation["platform"]`. |
+| Dependent mobile workflows | Customer replies (text, image, voice), delivery ticks, failure display |
+| Priority / blocks production | P0–P1. **Blocks production** for the website; defence in depth for mobile. |
+
+
+### BE-3: The conversation WebSocket ignores the `messages:view` permission
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | J3 (BF3) |
+| Current behaviour | A member restricted by RBAC to `invoices:view` gets 403 on REST, but `WS /ws/conversations/{id}` accepts them and streams messages. |
+| Evidence | Probe P6: REST 403, socket `ACCEPTED connected`. |
+| Endpoint | `WS /api/v1/smartflow/ws/conversations/{conversation_id}` (`api/v1/endpoints/smartflow/conversations.py:28-49`). The inbox socket already checks, at `:91-95`. |
+| Root cause | The handler checks token, user, blocked status and conversation access, but not RBAC. |
+| Why mobile cannot fix it | Permission enforcement is server-side. |
+| Required change | Before `conversation_realtime_hub.connect`, add the same `RBACService.has_permission(..., "messages", "view")` check as `inbox_stream`, and close with 1008 when it fails. |
+| Dependent mobile workflows | Realtime messages, typing and status in the conversation and group screens. Mobile treats a 1008 close as final and falls back to polling, which REST would then also refuse. |
+| Priority / blocks production | P0. **Blocks production** (permission bypass). |
+
+
+### BE-4: Group members picked from contacts never gain access
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | J4, K12, K17 (BF4) |
+| Current behaviour | Both the mobile and website group member pickers list **contacts** (`Mabdel Website/src/pages/Groups.jsx:232`, mobile `CreateGroupScreen`/`GroupSettingScreen`), so `member_ids` hold contact IDs. Every access check matches **user IDs** (`services/smartflow/conversation/groups.py:56`, `_base_mixins/access.py:102`). Only the owner, plus colleagues added by user ID, can open the group. |
+| Evidence | Code trace (a sub-review, confirmed against the code). Not probed at runtime. |
+| Endpoints | `POST /api/v1/smartflow/groups`, `POST /groups/{id}/members`, `PATCH /groups/{id}` |
+| Data | `groups.member_ids`, `conversations.member_ids` |
+| Why mobile cannot fix it | The mobile app sends the same contact IDs as the website. Mapping a contact to a platform user is server knowledge (`_resolve_group_member_user_id` already does it for RBAC). |
+| Required change | When members are added, resolve each contact to its linked user and store user IDs in the group conversation's `member_ids`. Alternatively, accept user IDs from a teammate picker (`GET /conversations/assignees` already lists teammates) and document that contract. |
+| Dependent mobile workflows | Group chat for non-owners: open, read, send, leave |
+| Priority / blocks production | P1. Blocks group messaging for everyone except the owner. |
+
+
+### BE-5: Attachments are not delivered to external channels
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | G9 (BF6) |
+| Current behaviour | In a customer thread, `_finalize_outbound_delivery` passes only `content` to the provider (`services/smartflow/conversation/messages.py:111-119`, `delivery.py:31-83`). An image or voice reply goes out as empty text, or not at all. |
+| Evidence | Code trace. |
+| Why mobile cannot fix it | Media delivery happens through provider APIs on the server. |
+| Required change | Pass the attachments through and use each provider's media API (WhatsApp media message, MMS or a link for SMS, email attachment). Until that exists, reject media sends on those channels with a clear 400 instead of storing them as `sent`. |
+| Dependent mobile workflows | Image and voice replies in customer threads |
+| Priority / blocks production | P1. |
+
+
+---
+
+
+## Medium
+
+
+### BE-6: Typing state has no actor identity
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | B8 (BF7) |
+| Current behaviour | `GET …/typing` returns the **viewer's own** typing document for non-global chats (`services/smartflow/conversation/typing_state.py:17-18`). The `typing.updated` socket payload carries no user ID, so a client cannot tell its own typing from someone else's. |
+| Evidence | Probe P4: A types; B sees `False`, A sees `True`. |
+| Mobile change already made | Mobile stopped polling `GET /typing` (which showed you your own typing). It now shows `typing.updated` only when `actor_type` is `ai` or `contact`, and sends its own typing as `actor_type:"user"`. Colleague typing is therefore not shown until this is fixed. |
+| Required change | <br>1. In `get_typing_state`, query `{"conversation_id": id, "user_id": {"$ne": viewer}, "is_typing": True}` for every conversation type. <br>2. Add `user_id` to the `typing.updated` payload. |
+| Priority / blocks production | P2. Does not block. |
+
+
+### BE-7: Attachment upload accepts any file type
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | G5 (BF8) |
+| Evidence | Probe P7: `.exe` → 201, type `file`. |
+| Endpoint | `POST /api/v1/smartflow/conversations/{id}/attachments` → `store_message_attachment` (`services/smartflow/conversation/messages.py:127-152`) |
+| Required change | Add an allow-list of MIME types and extensions (images, audio, PDF and office documents) and an explicit size limit, returning 415 or 413. The current size limit inside `media_storage.store_file` was **not verified**. |
+| Priority / blocks production | P2. |
+
+
+### BE-8: Group profile PATCH can wipe all members
+
+
+| Field | Detail |
+|---|---|
+| Audit IDs | K11 (BF5) |
+| Current behaviour | `PATCH /groups/{id}` with `member_ids: []` replaces the member list (`services/smartflow/conversation/groups.py:93-99`). |
+| Mobile change already made | The edit screen can no longer save before the group has loaded, and sends `member_ids` only when they were edited. This matches the website, whose settings form never sends them. |
+| Required change | Ignore `member_ids` in a profile PATCH, or reject an empty list there. Membership already has its own endpoints. |
+| Priority / blocks production | P2 now that mobile is mitigated. Defence in depth. |
+
+
+---
+
+
+## Low
+
+
+| ID | Issue (audit ID) | Required backend change | Mobile impact today |
+|---|---|---|---|
+| BE-9 | Serialized conversation lacks `group_id` (A21) | Add `group_id` to `_serialize_conversation` for group threads | Mobile looks the group up by conversation ID (one extra request) |
+| BE-10 | Group owner missing from `members`, and the "admin" role has no effect (K9, K14) | Include the owner in `_serialize_group_members`. Make admin rights effective, or drop the role | The members list omits the owner. "Change role" changes nothing |
+| BE-11 | Invites are stored but never sent (K15) | Send the invite (email or SMS) or remove the feature | Not exposed in mobile UI |
+| BE-12 | No idempotency on `POST /messages` (C7) | Accept an idempotency key or `client_temp_id` and deduplicate | A network retry after a timeout can duplicate a message |
+| BE-13 | WebSocket token travels in the query string | Accept `Authorization` on the upgrade or a short-lived socket ticket | Token may appear in proxy and access logs |
+| BE-14 | No group-photo upload endpoint (K10) | Add `POST /groups/{id}/avatar` (multipart), like `contacts/{id}/avatar` | Mobile no longer saves phone-local photo paths. Choosing a group photo is not possible |
+| BE-15 | AI chat stores the user's prompt as `inbound` and the answer as `outbound`, both with `sender_is_self: true` (`services/smartflow/conversation/ai_chat.py:85-96`) | Store and serialize AI-chat messages from the viewer's side (prompt = self/outbound) | Mobile works around it by using `direction` inside AI threads (probe F5) |
+
+
+---
+
+
+## Not established, or product decisions (no requirement stated)
+
+
+- **Push notifications for new messages (H1–H3):** no message-push sender was found in the backend, and the mobile app has no push SDK. Whether this is planned is unknown, and the website has no equivalent.
+- **Mute, block, report and mark-as-unread (F4, F5):** neither the backend nor the website has these. They are a product decision, not a defect.
+
+
+## Shared root causes
+
+
+- **BE-2** affects every customer-channel reply on **both** clients.
+- **BE-4** affects every group function for non-owners.
+- **BE-1** and **BE-3** are authorization gaps and should ship first.
+
+
+
