@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import ReturnDocument
 
 from app.core.crypto import decrypt_value
 from app.core.exceptions import AppException
@@ -26,67 +27,107 @@ class SocialPostsService:
     # ------------------------------------------------------------------
 
     async def create_post(self, user_id: str, payload: dict) -> dict:
-        platforms: list[str] = payload["platforms"]
+        platforms: list[str] = payload.get("platforms") or ["draft"]
         content: str = payload["content"]
         media_url: str | None = payload.get("media_url")
         scheduled_at: datetime | None = payload.get("scheduled_at")
+        is_draft: bool = bool(payload.get("is_draft") or platforms == ["draft"])
+        title: str | None = payload.get("title")
 
         results: list[dict] = []
         team_ids = await resolve_team_user_ids(self.db, user_id)
 
-        for platform in platforms:
-            if scheduled_at and scheduled_at > utc_now():
-                results.append({"platform": platform, "status": "scheduled", "post_id": None, "error": None})
-                continue
-
-            integration = await self.db.social_integrations.find_one(
-                {"user_id": user_id, "platform": platform, "status": "connected"}
-            ) or await self.db.social_integrations.find_one(
-                {"user_id": {"$in": team_ids}, "platform": platform, "status": "connected"}
-            )
-            if not integration:
-                results.append({"platform": platform, "status": "not_connected", "post_id": None, "error": f"No connected {platform} account."})
-                continue
-
-            access_token = self._decrypt_token(integration)
-            if not access_token:
-                results.append({"platform": platform, "status": "failed", "post_id": None, "error": "Access token unavailable."})
-                continue
-
-            try:
-                if platform == "facebook":
-                    post_id = await self._post_to_facebook(integration, access_token, content, media_url)
-                elif platform == "instagram":
-                    post_id = await self._post_to_instagram(integration, access_token, content, media_url)
-                elif platform == "linkedin":
-                    post_id = await self._post_to_linkedin(integration, access_token, content, media_url)
-                elif platform == "x":
-                    post_id = await self._post_to_x(integration, access_token, content, media_url)
-                elif platform == "threads":
-                    post_id = await self._post_to_threads(integration, access_token, content, media_url)
-                else:
-                    results.append({"platform": platform, "status": "failed", "post_id": None, "error": "Unsupported platform."})
+        if is_draft or platforms == ["draft"]:
+            results.append({"platform": "draft", "status": "draft", "post_id": None, "error": None})
+        else:
+            for platform in platforms:
+                if platform == "draft":
+                    results.append({"platform": "draft", "status": "draft", "post_id": None, "error": None})
                     continue
-                results.append({"platform": platform, "status": "published", "post_id": post_id, "error": None})
-            except AppException as exc:
-                results.append({"platform": platform, "status": "failed", "post_id": None, "error": exc.message})
-            except Exception as exc:
-                results.append({"platform": platform, "status": "failed", "post_id": None, "error": str(exc)})
+                if scheduled_at and scheduled_at > utc_now():
+                    results.append({"platform": platform, "status": "scheduled", "post_id": None, "error": None})
+                    continue
+
+                integration = await self.db.social_integrations.find_one(
+                    {"user_id": user_id, "platform": platform, "status": "connected"}
+                ) or await self.db.social_integrations.find_one(
+                    {"user_id": {"$in": team_ids}, "platform": platform, "status": "connected"}
+                )
+                if not integration:
+                    results.append({"platform": platform, "status": "not_connected", "post_id": None, "error": f"No connected {platform} account."})
+                    continue
+
+                access_token = self._decrypt_token(integration)
+                if not access_token:
+                    results.append({"platform": platform, "status": "failed", "post_id": None, "error": "Access token unavailable."})
+                    continue
+
+                try:
+                    if platform == "facebook":
+                        post_id = await self._post_to_facebook(integration, access_token, content, media_url)
+                    elif platform == "instagram":
+                        post_id = await self._post_to_instagram(integration, access_token, content, media_url)
+                    elif platform == "linkedin":
+                        post_id = await self._post_to_linkedin(integration, access_token, content, media_url)
+                    elif platform == "x":
+                        post_id = await self._post_to_x(integration, access_token, content, media_url)
+                    elif platform == "threads":
+                        post_id = await self._post_to_threads(integration, access_token, content, media_url)
+                    else:
+                        results.append({"platform": platform, "status": "failed", "post_id": None, "error": "Unsupported platform."})
+                        continue
+                    results.append({"platform": platform, "status": "published", "post_id": post_id, "error": None})
+                except AppException as exc:
+                    results.append({"platform": platform, "status": "failed", "post_id": None, "error": exc.message})
+                except Exception as exc:
+                    results.append({"platform": platform, "status": "failed", "post_id": None, "error": str(exc)})
 
         now = utc_now()
         doc = {
             "user_id": user_id,
+            "title": title,
             "content": content,
             "platforms": platforms,
             "media_url": media_url,
             "scheduled_at": scheduled_at,
             "results": results,
+            "is_draft": is_draft,
             "created_at": now,
             "updated_at": now,
         }
         result = await self.db.social_posts.insert_one(doc)
         doc["_id"] = result.inserted_id
         return serialize_mongo_document(doc)
+
+    async def update_post(self, user_id: str, post_id: str, updates: dict) -> dict:
+        try:
+            oid = ObjectId(post_id)
+        except Exception:
+            raise AppException(status_code=400, code="INVALID_POST_ID", message="Invalid post ID.")
+        team_ids = await resolve_team_user_ids(self.db, user_id)
+        existing = await self.db.social_posts.find_one({"_id": oid, "user_id": {"$in": team_ids}})
+        if not existing:
+            raise AppException(status_code=404, code="POST_NOT_FOUND", message="Social post not found.")
+
+        clean_updates = {k: v for k, v in updates.items() if v is not None}
+        clean_updates["updated_at"] = utc_now()
+        updated = await self.db.social_posts.find_one_and_update(
+            {"_id": oid},
+            {"$set": clean_updates},
+            return_document=ReturnDocument.AFTER,
+        )
+        return serialize_mongo_document(updated)
+
+    async def delete_post(self, user_id: str, post_id: str) -> bool:
+        try:
+            oid = ObjectId(post_id)
+        except Exception:
+            raise AppException(status_code=400, code="INVALID_POST_ID", message="Invalid post ID.")
+        team_ids = await resolve_team_user_ids(self.db, user_id)
+        result = await self.db.social_posts.delete_one({"_id": oid, "user_id": {"$in": team_ids}})
+        if result.deleted_count == 0:
+            raise AppException(status_code=404, code="POST_NOT_FOUND", message="Social post not found.")
+        return True
 
     async def list_posts(self, user_id: str, page: int = 1, page_size: int = 20) -> dict:
         team_ids = await resolve_team_user_ids(self.db, user_id)

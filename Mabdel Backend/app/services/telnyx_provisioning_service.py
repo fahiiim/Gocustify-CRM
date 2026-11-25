@@ -204,6 +204,42 @@ class TelnyxProvisioningService:
             },
         )
         updated = await self.db.organizations.find_one({"organization_id": organization_id})
+
+        # Automated welcome SMS with provisioned phone number and dashboard access
+        assigned_number = result.get("phone_number")
+        if requested_by_user_id and assigned_number:
+            try:
+                from bson import ObjectId
+                from app.services.call_service import CallService
+
+                owner_user = None
+                try:
+                    owner_user = await self.db.users.find_one({"_id": ObjectId(requested_by_user_id)})
+                except Exception:
+                    pass
+                if not owner_user:
+                    owner_user = await self.db.users.find_one({"_id": str(requested_by_user_id)})
+
+                target_phone = owner_user.get("phone") if owner_user else None
+                if not target_phone and updated:
+                    target_phone = updated.get("phone") or updated.get("contact_phone")
+
+                if target_phone:
+                    user_name = (owner_user.get("name") or owner_user.get("full_name") or "Business Owner").strip()
+                    user_email = (owner_user.get("email") or "your registered account email").strip()
+                    welcome_sms = (
+                        f"Welcome to GoCustify, {user_name}! Your dedicated AI Receptionist & Business line is now active: {assigned_number}. "
+                        f"Log in to your dashboard at {settings.PUBLIC_FRONTEND_URL} with {user_email} to customize call handling, staff schedules, and voice scripts."
+                    )
+                    await CallService().send_sms(
+                        to_number=target_phone,
+                        message=welcome_sms,
+                        from_number=assigned_number,
+                    )
+                    logger.info("Dispatched welcome SMS with Telnyx credentials to %s (%s)", target_phone, user_email)
+            except Exception as sms_err:
+                logger.warning("Could not dispatch automated Telnyx welcome SMS: %s", sms_err)
+
         return self._status_payload(updated)
 
     async def release_organization(self, organization_id: str) -> None:

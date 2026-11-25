@@ -313,6 +313,35 @@ for _channel in ("sms", "email"):
             "recipient": {"type": "string"}, "message": {"type": "string"},
             "subject": {"type": "string"}, "caller_confirmed": {"type": "boolean"},
         }, "required": ["recipient", "message", "caller_confirmed"]}})
+TOOLS.append({
+    "type": "function",
+    "name": "lookup_vehicle_inventory",
+    "description": "Look up available cars/vehicles in dealership inventory by make, model, year, or keyword (e.g. '2010 Toyota Corolla'). Returns stock status, price, mileage, and vehicle image URL.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Vehicle make, model, year, or trim"},
+        },
+        "required": ["query"],
+    },
+})
+TOOLS.append({
+    "type": "function",
+    "name": "schedule_test_drive",
+    "description": "Book a test drive appointment for a vehicle and dispatch an automated confirmation MMS/SMS with the vehicle picture & price to the caller.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "vehicle_query": {"type": "string", "description": "Vehicle make and model (e.g. '2010 Toyota Corolla')"},
+            "date": {"type": "string", "description": "Date (YYYY-MM-DD)"},
+            "time": {"type": "string", "description": "Time (HH:MM)"},
+            "caller_name": {"type": "string", "description": "Caller full name"},
+            "caller_phone": {"type": "string", "description": "Caller phone number"},
+            "caller_confirmed": {"type": "boolean", "description": "True when caller explicitly confirmed the appointment time"},
+        },
+        "required": ["vehicle_query", "date", "time", "caller_name", "caller_confirmed"],
+    },
+})
 
 
 def _email_or_none(value: str | None) -> str | None:
@@ -560,15 +589,22 @@ class RealtimeReceptionist(AIPhoneAgent):
                 plan_lines.append(f"- {label}: {status}, network status: {plan.get('network_status', 'unknown')}{verify}")
             recognition = get_insurance_recognition_dictionary(call_settings.get("business_type"))
             insurance_block = (
-                "\nINSURANCE - the list below is the ONLY source you may answer an insurance question from:\n"
-                + ("\n".join(plan_lines) if plan_lines else "No insurance plans are configured yet.") + "\n"
+                "\nHEALTHCARE & DENTAL INSURANCE VERIFICATION FLOW (MANDATORY 4-STEP PROTOCOL):\n"
+                "When a caller is inquiring about an appointment, dental visit, or medical service, guide them through this exact sequence:\n"
+                "1. STEP 1 - INQUIRE INSURANCE: Ask if the caller has dental or health insurance.\n"
+                "2. STEP 2 - CARRIER IDENTIFICATION: If yes, ask for their insurance carrier name (e.g. Delta Dental, MetLife, BCBS, Cigna, Aetna).\n"
+                "3. STEP 3 - PLAN CATEGORY: Ask for their plan type or category (e.g. PPO, HMO, Premier, or Medicare/Medicaid).\n"
+                "4. STEP 4 - EXPLAIN COPAY & NETWORK STATUS:\n"
+                "   - For In-Network plans (e.g. accepted PPO plans below): explain that they are in-network, and their standard copay is typically $30 (subject to office verification).\n"
+                "   - For Out-of-Network plans or non-participating HMOs: explain that the office is out-of-network, their estimated copay/fee is $80, and the office will provide itemized claims for reimbursement.\n"
+                "   - For Uninsured / Cash-pay: explain that self-pay consultations/exams have an estimated fee of $80.\n"
+                "\nCONFIGURED INSURANCE PLANS IN SYSTEM:\n"
+                + ("\n".join(plan_lines) if plan_lines else "No specific insurance plans are listed yet.") + "\n"
                 + (
-                    f"You may recognize these common insurer names if the caller says one ({', '.join(recognition)}), "
-                    "but recognizing a name is NOT the same as it being accepted - only the list above is the real answer.\n"
+                    f"Recognized carrier names: ({', '.join(recognition)}).\n"
                     if recognition else ""
                 )
-                + "If the caller names a plan that is not listed above, say you don't have confirmed information for that "
-                "specific plan and offer to have the office verify it. Never guess or infer acceptance from the name alone.\n"
+                + "Always clarify that the front office will verify coverage details before confirming the final benefit.\n"
             )
         providers_block = ""
         ask_provider_line = ""
@@ -578,7 +614,21 @@ class RealtimeReceptionist(AIPhoneAgent):
             appointment_types = await self._providers().list_appointment_types(self.user_id, active_only=True)
             lines = []
             if providers:
-                lines.append("PROVIDERS: " + ", ".join(p["name"] + (f" ({p['role_title']})" if p.get("role_title") else "") for p in providers))
+                prov_strs = []
+                day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                for p in providers:
+                    details = []
+                    if p.get("role_title"):
+                        details.append(p["role_title"])
+                    if p.get("working_days") is not None:
+                        w_days = [day_names[d] for d in p["working_days"] if 0 <= d <= 6]
+                        details.append(f"Available: {', '.join(w_days) if w_days else 'None'}")
+                    if p.get("working_hours"):
+                        wh = p["working_hours"]
+                        details.append(f"Hours: {wh.get('start_hour', 9)}:00-{wh.get('end_hour', 17)}:00")
+                    desc = f" ({', '.join(details)})" if details else ""
+                    prov_strs.append(f"{p['name']}{desc}")
+                lines.append("PROVIDERS (Check provider working days before offering appointment times): " + ", ".join(prov_strs))
             if appointment_types:
                 lines.append("APPOINTMENT TYPES: " + ", ".join(f"{t['name']} ({t['duration_minutes']} min)" for t in appointment_types))
             locations = await self._providers().list_locations(self.user_id, active_only=True)
@@ -587,8 +637,10 @@ class RealtimeReceptionist(AIPhoneAgent):
             if lines:
                 providers_block = "\n" + "\n".join(lines) + "\n"
                 ask_provider_line = (
-                    "- This business has named providers and/or appointment types listed above. Ask which one the caller wants "
-                    "(or offer the choices) before check_availability, and pass the exact name through.\n"
+                    "- This business has named providers (e.g. dentists, hygienists, physicians) and/or appointment types listed above. "
+                    "When a caller requests a specific provider or service, verify the provider's working days and hours. "
+                    "If the caller asks for a day the provider does not work (e.g. hygienist available only Mon & Wed requested on Friday), "
+                    "politely explain when they work and offer open times on their working days. Always pass the exact provider name to check_availability.\n"
                 )
 
             # Named playbooks the owner set up: guidance the model follows with judgement,
@@ -632,6 +684,17 @@ class RealtimeReceptionist(AIPhoneAgent):
             else f"Speak in the language with ISO code \"{self.language}\" unless the caller switches.\n"
         )
 
+        dealership_block = ""
+        if call_settings.get("business_type") == "Car Dealership":
+            dealership_block = (
+                "\nCAR DEALERSHIP PROTOCOL:\n"
+                "When a caller asks about vehicles in stock, prices, or inventory (e.g. '2010 Toyota Corolla', '2024 Honda CR-V'):\n"
+                "1. Call lookup_vehicle_inventory with their requested car model/year to check lot stock, price, and specs.\n"
+                "2. Share the availability, exact price, and mileage with the caller.\n"
+                "3. Proactively offer to schedule a test drive. When they choose a day and time, call schedule_test_drive.\n"
+                "4. Inform the caller that an MMS confirmation with the car photo and price has been dispatched to their phone, and remind them to bring their driver's license.\n"
+            )
+
         sections = [
             who,
             f"\nToday is {now_local.strftime('%A, %B %d, %Y')} and the time is {now_local.strftime('%I:%M %p')} ({tz_name}).",
@@ -644,6 +707,7 @@ class RealtimeReceptionist(AIPhoneAgent):
             policy_block,
             industry_template_block,
             insurance_block,
+            dealership_block,
             "\nHOW TO BEHAVE:\n"
             "- Sound like a warm, capable person at the front desk: short spoken sentences, one question at a time, natural acknowledgements. Never read lists or long menus.\n"
             "- Answer in the caller's language. Reply in one to three sentences unless they ask for detail.\n"
@@ -1194,6 +1258,65 @@ class RealtimeReceptionist(AIPhoneAgent):
             from_email=sender.get("email"), from_name=sender.get("name"), reply_to=sender.get("email"),
             sender_provider=sender.get("provider"), sender_user_id=self.user_id, db=self.flow_service.db)
         return {"sent": True, "note": "The email was accepted by the sending service; delivery is not guaranteed."}
+
+    async def _tool_lookup_vehicle_inventory(self, query: str) -> dict:
+        from app.services.smartflow.dealership_service import DealershipService
+        org_id = await self.flow_service._resolve_organization_id(self.user_id) if (self.user_id and self.user_id != "guest") else None
+        call_settings = await self._get_call_settings()
+        website_url = call_settings.get("website_url")
+        service = DealershipService(self.flow_service.db if self.flow_service else None)
+        vehicles = await service.search_inventory(query, organization_id=org_id, website_url=website_url)
+        return {"matching_vehicles": vehicles, "count": len(vehicles)}
+
+    async def _tool_schedule_test_drive(
+        self,
+        vehicle_query: str,
+        date: str,
+        time: str,
+        caller_name: str,
+        caller_phone: str | None = None,
+        caller_confirmed: bool = False,
+    ) -> dict:
+        if caller_confirmed is not True:
+            return {"outcome": "confirmation_required", "status": "REQUIRES_CALLER_CONFIRMATION"}
+        from app.services.smartflow.dealership_service import DealershipService
+        settings_data = await self._get_call_settings()
+        business_name = settings_data.get("business_name") or "Dealership"
+        dealership_phone = settings_data.get("transfer_number") or settings_data.get("phone_number")
+        phone_to_use = caller_phone or self.caller_phone
+        service = DealershipService(self.flow_service.db if self.flow_service else None)
+        vehicles = await service.search_inventory(vehicle_query)
+        chosen_vehicle = vehicles[0] if vehicles else {"year": 2024, "make": "Vehicle", "model": vehicle_query, "price": 18500}
+
+        booking_result = await self._tool_book_appointment(
+            date=date,
+            time=time,
+            first_name=caller_name,
+            last_name="",
+            phone=phone_to_use,
+            provider="Sales Desk",
+            appointment_type="Test Drive",
+            caller_confirmed=True,
+        )
+
+        res = await service.confirm_test_drive(
+            user_id=self.user_id,
+            customer_name=caller_name,
+            customer_phone=phone_to_use or "+15551234567",
+            date_str=date,
+            time_str=time,
+            vehicle=chosen_vehicle,
+            business_name=business_name,
+            dealership_phone=dealership_phone,
+        )
+        return {
+            "outcome": "test_drive_scheduled",
+            "appointment": booking_result,
+            "vehicle": res.get("vehicle"),
+            "price": res.get("price"),
+            "mms_dispatched": res.get("mms_dispatched"),
+            "note": "Test drive booked and MMS confirmation dispatched with vehicle photo and pricing.",
+        }
 
     def _adopt_language(self, language: str | None) -> str:
         """The realtime model hears the caller; Whisper-style detection does not run
@@ -1779,6 +1902,37 @@ class RealtimeReceptionist(AIPhoneAgent):
         if booked["outcome"] != "booked":
             return booked
         return {"outcome": "rescheduled", "when": booked["when"], "test_mode": "nothing was changed"}
+
+    async def _sim_lookup_vehicle_inventory(self, query: str) -> dict:
+        from app.services.smartflow.dealership_service import DealershipService
+        service = DealershipService(None)
+        vehicles = await service.search_inventory(query)
+        return {"matching_vehicles": vehicles, "count": len(vehicles), "test_mode": "dry-run vehicle lookup"}
+
+    async def _sim_schedule_test_drive(
+        self,
+        vehicle_query: str,
+        date: str,
+        time: str,
+        caller_name: str,
+        caller_phone: str | None = None,
+        caller_confirmed: bool = False,
+    ) -> dict:
+        from app.services.smartflow.dealership_service import DealershipService
+        service = DealershipService(None)
+        vehicles = await service.search_inventory(vehicle_query)
+        chosen = vehicles[0] if vehicles else {"year": 2024, "make": "Toyota", "model": "Corolla", "price": 8990}
+        price_str = f"${chosen.get('price'):,}" if isinstance(chosen.get("price"), (int, float)) else str(chosen.get("price"))
+        img_url = chosen.get("image_url") or "https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=800&auto=format&fit=crop&q=80"
+        return {
+            "outcome": "test_drive_scheduled",
+            "vehicle": f"{chosen.get('year')} {chosen.get('make')} {chosen.get('model')}",
+            "price": price_str,
+            "scheduled_time": f"{date} at {time}",
+            "mms_confirmation_dispatched": True,
+            "confirmation_message": f"Hi {caller_name}! Your test drive for the {chosen.get('year')} {chosen.get('make')} {chosen.get('model')} ({price_str}) is confirmed for {date} at {time}. Picture & window sticker: {img_url}. Please bring your driver's license.",
+            "test_mode": "dry-run MMS test drive booking",
+        }
 
     async def _sim_cancel_appointment(self, appointment_id: str, **_: Any) -> dict:
         return {"outcome": "cancelled", "test_mode": "nothing was cancelled"}

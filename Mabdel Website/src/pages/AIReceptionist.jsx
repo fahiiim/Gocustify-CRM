@@ -145,8 +145,46 @@ export default function AIReceptionist() {
     name: '',
     role: 'Front Desk',
     department: 'Intake & Scheduling',
+    working_days: [0, 1, 2, 3, 4],
+    start_hour: 9,
+    end_hour: 17,
     active: true,
   });
+
+  const DAYS_OF_WEEK = [
+    { id: 0, label: 'Mon', full: 'Monday' },
+    { id: 1, label: 'Tue', full: 'Tuesday' },
+    { id: 2, label: 'Wed', full: 'Wednesday' },
+    { id: 3, label: 'Thu', full: 'Thursday' },
+    { id: 4, label: 'Fri', full: 'Friday' },
+    { id: 5, label: 'Sat', full: 'Saturday' },
+    { id: 6, label: 'Sun', full: 'Sunday' },
+  ];
+
+  const formatStaffSchedule = (staff) => {
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const days = staff.working_days;
+    const hours = staff.working_hours || (staff.start_hour !== undefined ? { start_hour: staff.start_hour, end_hour: staff.end_hour } : null);
+
+    let dayStr = 'All Days';
+    if (Array.isArray(days) && days.length > 0) {
+      if (days.length === 5 && days.every((d, i) => d === i)) {
+        dayStr = 'Mon - Fri';
+      } else {
+        dayStr = days.map((d) => dayNames[d] || d).join(', ');
+      }
+    }
+
+    let hourStr = '9:00 AM - 5:00 PM';
+    if (hours && hours.start_hour !== undefined && hours.end_hour !== undefined) {
+      const s = hours.start_hour;
+      const e = hours.end_hour;
+      const sStr = s === 0 ? '12:00 AM' : s < 12 ? `${s}:00 AM` : s === 12 ? '12:00 PM' : `${s - 12}:00 PM`;
+      const eStr = e === 12 ? '12:00 PM' : e < 12 ? `${e}:00 AM` : e === 24 ? '12:00 AM' : `${e - 12}:00 PM`;
+      hourStr = `${sStr} - ${eStr}`;
+    }
+    return `${dayStr} • ${hourStr}`;
+  };
 
   const [insuranceForm, setInsuranceForm] = useState({
     payer: '',
@@ -274,10 +312,31 @@ export default function AIReceptionist() {
       const bType = data?.business_type || 'Dental Clinic';
 
       // Load saved services & staff if available
+      let loadedStaff = null;
+      try {
+        const provRes = await smartflowApi.getProviders();
+        const provs = provRes?.data?.data || provRes?.data || [];
+        if (Array.isArray(provs) && provs.length > 0) {
+          loadedStaff = provs.map((p) => ({
+            id: p.id,
+            name: p.name,
+            role: p.role_title || 'Specialist',
+            department: p.department || '',
+            working_days: Array.isArray(p.working_days) ? p.working_days : [0, 1, 2, 3, 4],
+            working_hours: p.working_hours || { start_hour: 9, end_hour: 17 },
+            active: p.active ?? true,
+          }));
+        }
+      } catch (err) {
+        console.warn('Could not load providers from /smartflow/providers:', err);
+      }
+
       if (data?.industry_conditional_data?.services?.length) {
         setServicesList(data.industry_conditional_data.services);
       }
-      if (data?.industry_conditional_data?.staff?.length) {
+      if (loadedStaff && loadedStaff.length > 0) {
+        setStaffList(loadedStaff);
+      } else if (data?.industry_conditional_data?.staff?.length) {
         setStaffList(data.industry_conditional_data.staff);
       }
 
@@ -1085,43 +1144,54 @@ export default function AIReceptionist() {
                 </div>
                 <p className="text-xs text-slate-400 mb-3">People and teams the AI can route to or schedule with.</p>
 
-                <div className="space-y-2 text-xs max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                <div className="space-y-2 text-xs max-h-56 overflow-y-auto pr-1 scrollbar-thin">
                   {staffList.map((staff) => (
-                    <div key={staff.id} className="flex items-center justify-between p-2 rounded-none bg-[#191926] border border-[#252538]">
-                      <div className="flex items-center gap-2">
-                        <div className="h-6 w-6 rounded-none bg-purple-900/60 text-purple-300 flex items-center justify-center font-bold text-[10px]">
+                    <div key={staff.id} className="flex items-center justify-between p-2.5 rounded-none bg-[#191926] border border-[#252538]">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-none bg-purple-900/60 text-purple-300 flex items-center justify-center font-bold text-xs">
                           {staff.name.charAt(0)}
                         </div>
                         <div>
                           <div className="font-medium text-slate-200">{staff.name}</div>
                           <div className="text-[10px] text-slate-400">{staff.role} {staff.department ? `• ${staff.department}` : ''}</div>
+                          <div className="text-[10px] text-purple-300 font-medium mt-0.5 flex items-center gap-1">
+                            <Clock size={10} className="text-purple-400" />
+                            {formatStaffSchedule(staff)}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => {
                             setEditingStaff(staff);
+                            const wh = staff.working_hours || {};
                             setStaffForm({
                               name: staff.name,
-                              role: staff.role,
+                              role: staff.role || 'Specialist',
                               department: staff.department || '',
+                              working_days: Array.isArray(staff.working_days) ? staff.working_days : [0, 1, 2, 3, 4],
+                              start_hour: wh.start_hour ?? staff.start_hour ?? 9,
+                              end_hour: wh.end_hour ?? staff.end_hour ?? 17,
                               active: staff.active ?? true,
                             });
                             setStaffModalOpen(true);
                           }}
-                          className="p-1 hover:text-purple-300 text-slate-400 transition cursor-pointer"
-                          title="Edit Member"
+                          className="p-1.5 hover:text-purple-300 text-slate-400 transition cursor-pointer"
+                          title="Edit Member & Schedule"
                         >
-                          <Edit2 className="h-3 w-3" />
+                          <Edit2 className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => {
+                            if (staff.id && !staff.id.toString().startsWith('staff_')) {
+                              smartflowApi.deleteProvider(staff.id).catch(() => {});
+                            }
                             setStaffList(staffList.filter((s) => s.id !== staff.id));
                           }}
-                          className="p-1 hover:text-rose-400 text-slate-400 transition cursor-pointer"
+                          className="p-1.5 hover:text-rose-400 text-slate-400 transition cursor-pointer"
                           title="Delete Member"
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
@@ -1133,15 +1203,18 @@ export default function AIReceptionist() {
                     setEditingStaff(null);
                     setStaffForm({
                       name: '',
-                      role: 'Staff Specialist',
+                      role: 'Specialist',
                       department: 'Intake & Scheduling',
+                      working_days: [0, 1, 2, 3, 4],
+                      start_hour: 9,
+                      end_hour: 17,
                       active: true,
                     });
                     setStaffModalOpen(true);
                   }}
-                  className="mt-3 w-full py-1 text-xs text-purple-400 hover:text-purple-300 font-medium flex items-center justify-center gap-1 border border-purple-500/20 hover:bg-purple-950/30 rounded-none transition cursor-pointer"
+                  className="mt-3 w-full py-1.5 text-xs text-purple-400 hover:text-purple-300 font-medium flex items-center justify-center gap-1 border border-purple-500/20 hover:bg-purple-950/30 rounded-none transition cursor-pointer"
                 >
-                  <Plus className="h-3 w-3" /> Add Team Member
+                  <Plus className="h-3.5 w-3.5" /> Add Team Member
                 </button>
               </div>
             </div>
@@ -2568,14 +2641,51 @@ export default function AIReceptionist() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (!staffForm.name.trim()) return;
+                  const providerPayload = {
+                    name: staffForm.name.trim(),
+                    role_title: staffForm.role?.trim() || null,
+                    working_days: staffForm.working_days,
+                    working_hours: {
+                      start_hour: parseInt(staffForm.start_hour, 10),
+                      end_hour: parseInt(staffForm.end_hour, 10),
+                    },
+                  };
+
                   if (editingStaff) {
-                    setStaffList(staffList.map((st) => (st.id === editingStaff.id ? { ...st, ...staffForm } : st)));
+                    if (editingStaff.id && !editingStaff.id.toString().startsWith('staff_')) {
+                      smartflowApi.updateProvider(editingStaff.id, providerPayload).catch(console.error);
+                    }
+                    setStaffList(
+                      staffList.map((st) =>
+                        st.id === editingStaff.id
+                          ? {
+                              ...st,
+                              ...staffForm,
+                              working_hours: providerPayload.working_hours,
+                            }
+                          : st
+                      )
+                    );
                   } else {
+                    const tempId = `staff_${Date.now()}`;
+                    smartflowApi
+                      .createProvider(providerPayload)
+                      .then((res) => {
+                        const created = res?.data?.data;
+                        if (created?.id) {
+                          setStaffList((prev) =>
+                            prev.map((item) => (item.id === tempId ? { ...item, id: created.id } : item))
+                          );
+                        }
+                      })
+                      .catch(console.error);
+
                     setStaffList([
                       ...staffList,
                       {
-                        id: `staff_${Date.now()}`,
+                        id: tempId,
                         ...staffForm,
+                        working_hours: providerPayload.working_hours,
                       },
                     ]);
                   }
@@ -2592,7 +2702,7 @@ export default function AIReceptionist() {
                     required
                     value={staffForm.name}
                     onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })}
-                    placeholder="e.g. Dr. Emily Smith, Arthur Vance, Front Desk"
+                    placeholder="e.g. Dr. Emily Smith, Ahmad (Hygienist), Arthur Vance"
                     className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
                   />
                 </div>
@@ -2603,7 +2713,7 @@ export default function AIReceptionist() {
                     type="text"
                     value={staffForm.role}
                     onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
-                    placeholder="e.g. Lead Specialist, Managing Partner, Intake Coordinator"
+                    placeholder="e.g. Dental Hygienist, Lead Dentist, Physician Specialist"
                     className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
                   />
                 </div>
@@ -2614,9 +2724,76 @@ export default function AIReceptionist() {
                     type="text"
                     value={staffForm.department}
                     onChange={(e) => setStaffForm({ ...staffForm, department: e.target.value })}
-                    placeholder="e.g. Scheduling, Urgent Escalations, Billing"
+                    placeholder="e.g. Dental Care, Hygiene, Consultations"
                     className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
                   />
+                </div>
+
+                {/* Working Days Selector */}
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">
+                    Working Days & Available Schedule
+                  </label>
+                  <div className="grid grid-cols-7 gap-1">
+                    {DAYS_OF_WEEK.map((day) => {
+                      const isSelected = staffForm.working_days?.includes(day.id);
+                      return (
+                        <button
+                          key={day.id}
+                          type="button"
+                          onClick={() => {
+                            const current = staffForm.working_days || [];
+                            const updated = isSelected
+                              ? current.filter((d) => d !== day.id)
+                              : [...current, day.id].sort((a, b) => a - b);
+                            setStaffForm({ ...staffForm, working_days: updated });
+                          }}
+                          className={`py-1.5 text-center text-[11px] font-semibold transition border rounded-none cursor-pointer ${
+                            isSelected
+                              ? 'bg-purple-600 border-purple-500 text-white'
+                              : 'bg-[#1b1b2a] border-[#303046] text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Configure contractor days (e.g. Mon & Wed for hygienists). The AI will verify these days when scheduling.
+                  </p>
+                </div>
+
+                {/* Working Hours */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Start Hour</label>
+                    <select
+                      value={staffForm.start_hour ?? 9}
+                      onChange={(e) => setStaffForm({ ...staffForm, start_hour: parseInt(e.target.value, 10) })}
+                      className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                    >
+                      {[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map((hour) => (
+                        <option key={hour} value={hour}>
+                          {hour === 0 ? '12:00 AM' : hour < 12 ? `${hour}:00 AM` : hour === 12 ? '12:00 PM' : `${hour - 12}:00 PM`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">End Hour</label>
+                    <select
+                      value={staffForm.end_hour ?? 17}
+                      onChange={(e) => setStaffForm({ ...staffForm, end_hour: parseInt(e.target.value, 10) })}
+                      className="w-full bg-[#1b1b2a] text-white px-3 py-2 rounded-none border border-[#303046] focus:outline-none focus:border-purple-500"
+                    >
+                      {[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].map((hour) => (
+                        <option key={hour} value={hour}>
+                          {hour === 12 ? '12:00 PM' : hour < 12 ? `${hour}:00 AM` : `${hour - 12}:00 PM`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between p-2.5 bg-[#1b1b2a] border border-[#2b2b40]">

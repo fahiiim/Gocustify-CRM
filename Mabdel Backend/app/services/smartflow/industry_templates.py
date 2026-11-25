@@ -241,10 +241,10 @@ INDUSTRY_PRESETS: dict[str, dict] = {
             {"id": "serv_ortho", "name": "Orthodontics", "duration_minutes": 60, "provider_role": "Dr. Lee", "active": True},
         ],
         "staff": [
-            {"id": "staff_smith", "name": "Dr. Smith", "role": "General Dentist", "active": True},
-            {"id": "staff_jones", "name": "Dr. Jones", "role": "Implant & Surgery", "active": True},
-            {"id": "staff_lisa", "name": "Lisa R.", "role": "Hygienist", "active": True},
-            {"id": "staff_front", "name": "Front Desk", "role": "Scheduling & Calls", "active": True},
+            {"id": "staff_smith", "name": "Dr. Smith", "role": "General Dentist", "working_days": [0, 1, 2, 3, 4], "working_hours": {"start_hour": 9, "end_hour": 17}, "active": True},
+            {"id": "staff_jones", "name": "Dr. Jones", "role": "Implant Specialist", "working_days": [1, 3], "working_hours": {"start_hour": 9, "end_hour": 16}, "active": True},
+            {"id": "staff_lisa", "name": "Lisa R. (Hygienist)", "role": "Dental Hygienist", "working_days": [0, 2], "working_hours": {"start_hour": 8, "end_hour": 17}, "active": True},
+            {"id": "staff_front", "name": "Front Desk", "role": "Scheduling & Calls", "working_days": [0, 1, 2, 3, 4], "working_hours": {"start_hour": 8, "end_hour": 18}, "active": True},
         ],
         "custom_phrases": ["Our office", "Your next visit", "Dental team", "Accepted insurance"],
         "routing_rules": [
@@ -265,8 +265,9 @@ INDUSTRY_PRESETS: dict[str, dict] = {
             "description": "The AI answers insurance questions strictly from your configured plans.",
         },
         "sample_test_queries": [
-            {"query": "Do you take Delta Dental?", "intent": "Insurance Question", "entity": "Delta Dental", "lookup": "Found: Delta Dental - PPO | In-Network", "action": "Provide insurance info (No transfer)", "reply": "Yes, BrightSmile Dental Care is in-network with Delta Dental PPO. Your specific benefits and coverage may still require verification with Delta Dental."},
-            {"query": "I'd like to schedule a cleaning.", "intent": "Book Appointment", "entity": "Routine Cleaning", "lookup": "Slot available: Tomorrow 10:00 AM", "action": "Book directly in calendar", "reply": "I would be happy to help schedule your routine dental cleaning. We have an opening with our hygienist tomorrow at 10:00 AM or Thursday at 2:30 PM. Which works best for you?"},
+            {"query": "Do you take Delta Dental, and what is the copay?", "intent": "Insurance Verification", "entity": "Delta Dental PPO", "lookup": "Found: Delta Dental - PPO | In-Network ($30 copay)", "action": "4-step insurance flow & explain $30 in-network copay", "reply": "Yes! BrightSmile Dental Care is in-network with Delta Dental PPO. For standard preventive cleanings and exams, your in-network copay is typically $30, which our office will verify prior to your visit."},
+            {"query": "Can I schedule a cleaning with Lisa the hygienist on Friday?", "intent": "Provider Schedule Check", "entity": "Lisa R. (Hygienist)", "lookup": "Lisa works Mon & Wed only (Off on Friday)", "action": "Explain schedule & offer available days", "reply": "Our hygienist Lisa works on Mondays and Wednesdays from 8:00 AM to 5:00 PM. Would you like to schedule your routine cleaning with her next Monday at 10:00 AM or Wednesday at 2:00 PM?"},
+            {"query": "I have an out-of-network HMO insurance, how much will a visit cost?", "intent": "Insurance Verification", "entity": "Out-of-Network HMO", "lookup": "Out-of-network policy ($80 fee)", "action": "Explain out-of-network copay & claim assistance", "reply": "For out-of-network HMO plans, your estimated visit fee is $80. Our office will provide full itemized receipts and documentation so you can submit for direct reimbursement with your carrier."},
             {"query": "Can I reschedule my appointment?", "intent": "Reschedule Appointment", "entity": "Existing Appointment", "lookup": "Found appointment on Friday 3:00 PM", "action": "Reschedule in calendar", "reply": "Certainly! I see your appointment this Friday at 3:00 PM. What day and time would you prefer to move it to?"},
             {"query": "I'm a new patient, what do I need to do?", "intent": "New Patient Intake", "entity": "New Patient", "lookup": "Intake forms available online", "action": "Send new patient link & book exam", "reply": "Welcome to BrightSmile Dental Care! As a new patient, we recommend booking a comprehensive dental exam and cleaning. We will also send you a quick online intake form to complete before your visit."},
             {"query": "Do you offer payment plans?", "intent": "Billing / Payment Question", "entity": "Financing & Payment Plans", "lookup": "CareCredit & In-House Plans available", "action": "Share payment options", "reply": "Yes! We offer flexible in-house payment options and CareCredit financing with 0% interest for eligible treatments."},

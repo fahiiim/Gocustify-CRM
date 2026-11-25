@@ -96,16 +96,19 @@ class CallService:
             "from": request_from_number,
         }
 
-    async def send_sms(self, *, to_number: str, message: str, from_number: str | None = None) -> dict:
+    async def send_sms(self, *, to_number: str, message: str, from_number: str | None = None, media_urls: list[str] | None = None) -> dict:
         self._validate_telnyx_sms_config()
         client = self._client()
         try:
-            response = client.messages.send(
-                to=to_number,
-                from_=from_number or settings.TELNYX_PHONE_NUMBER or "",
-                text=message,
-                messaging_profile_id=settings.TELNYX_MESSAGING_PROFILE_ID or telnyx.NOT_GIVEN,
-            )
+            kwargs = {
+                "to": to_number,
+                "from_": from_number or settings.TELNYX_PHONE_NUMBER or "",
+                "text": message,
+                "messaging_profile_id": settings.TELNYX_MESSAGING_PROFILE_ID or telnyx.NOT_GIVEN,
+            }
+            if media_urls:
+                kwargs["media_urls"] = media_urls
+            response = client.messages.send(**kwargs)
         except telnyx.TelnyxError as exc:
             raise AppException(
                 status_code=502,

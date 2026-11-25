@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import Depends, Query, status
 
 from app.dependencies import get_mongo_database, require_permission, require_plan_feature
-from app.schemas.social_post import SocialPostCreateRequest
+from app.schemas.social_post import SocialPostCreateRequest, SocialPostUpdateRequest
 from app.services.social_posts_service import SocialPostsService
 from app.utils.responses import success_response
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -45,3 +45,24 @@ async def get_social_post(
 ) -> dict:
     data = await service.get_post(str(current_user["_id"]), post_id)
     return success_response(data=data, message="Social post fetched successfully.")
+
+
+@router.patch("/social-posts/{post_id}")
+async def update_social_post(
+    post_id: str,
+    payload: SocialPostUpdateRequest,
+    current_user: dict = Depends(require_permission("social_media", "post")),
+    service: SocialPostsService = Depends(_get_service),
+) -> dict:
+    data = await service.update_post(str(current_user["_id"]), post_id, payload.model_dump(exclude_unset=True))
+    return success_response(data=data, message="Social post updated successfully.")
+
+
+@router.delete("/social-posts/{post_id}")
+async def delete_social_post(
+    post_id: str,
+    current_user: dict = Depends(require_permission("social_media", "post")),
+    service: SocialPostsService = Depends(_get_service),
+) -> dict:
+    await service.delete_post(str(current_user["_id"]), post_id)
+    return success_response(data={"deleted": True}, message="Social post deleted successfully.")
