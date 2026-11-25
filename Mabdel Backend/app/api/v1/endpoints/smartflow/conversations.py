@@ -44,12 +44,18 @@ async def conversation_stream(websocket: WebSocket, conversation_id: str, token:
         if user.get("status") == "blocked":
             await websocket.close(code=1008)
             return
+        user_id = str(user["_id"])
+        # BE-3: WebSocket must enforce messages:view permission just like REST routes.
+        rbac = RBACService(db, await get_redis_client())
+        if not rbac.has_permission(await rbac.get_user_permissions(user_id, user.get("role", "user")), "messages", "view"):
+            await websocket.close(code=1008)
+            return
         service = SmartFlowService(db)
-        await service.get_conversation(str(user["_id"]), conversation_id)
-        await conversation_realtime_hub.connect(conversation_id, websocket, str(user["_id"]))
+        await service.get_conversation(user_id, conversation_id)
+        await conversation_realtime_hub.connect(conversation_id, websocket, user_id)
         await websocket.send_json({"event": "connected", "conversation_id": conversation_id, "data": {"connected": True}})
         await conversation_realtime_hub.publish(conversation_id, "presence.updated", {
-            "user_id": str(user["_id"]),
+            "user_id": user_id,
             "presence": "online",
         })
         while True:
