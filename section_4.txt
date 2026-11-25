@@ -1,0 +1,89 @@
+# Voice form filling backend amount audit
+
+
+November 23, 2026
+
+
+**Option C, VF-19, is implemented in the backend.** SmartFlow previously converted localized amounts before returning the patch to mobile. The parser now preserves unambiguous decimals and rejects ambiguous strings. The endpoints, numeric field names, and amount units are unchanged.
+
+
+## Ownership and status
+
+
+| Issue | Owner | Status or required work |
+|---|---|---|
+| VF-21 · Meeting mode and links | Mobile | The meeting form preserves the selected mode and its active field unless voice extraction supplies an explicit mode change. A location-only patch keeps the online link in the save payload. |
+| VF-22 · Microphone lifecycle and provisional text | Mobile | The shared recognition hook aborts active capture on background, waits for native start before marking the session as recording, and keeps provisional text separate from the command submitted by both mobile entry points. Native verification is pending. |
+| VF-18 · Preserve existing invoice rows | Mobile | Voice updates merge uniquely matched descriptions and append new rows. Ambiguous matches require manual review. A truncated response no longer deletes untouched rows. |
+| VF-18 · Extraction completeness and row identity | Backend and mobile | The backend still caps lists at 20 items. Accurate add/update operations need explicit row identity or an incomplete-response signal, and the mobile app needs to consume it. |
+| VF-16 · Provider availability | Backend configuration | Configure `OPENAI_API_KEY` and verify the configured model supports structured extraction in the target environment. Deployed availability is pending verification. |
+| VF-19 · Amount parsing | Backend | SmartFlow prefill and lease draft generation use the shared decimal parser. Invalid numeric patches preserve existing values. |
+| VF-23 · Missing-field metadata | Backend | Readiness uses the destination request schema and checks invoice rows, document actions, timing and broadcast recipients. Mobile form validation runs at save. |
+| VF-20 · Spoken directory names | Backend and mobile | The server resolves unique name matches in the permitted directory. The mobile form shows the resolved selections and asks the user to clarify ambiguous names. |
+| VF-17 · Prefill contract acknowledgement | Backend and mobile | The server returns `mode: "requested_fields"` for the new path. The mobile card and assistant require it before applying prefill. Deploy the backend first. |
+
+
+The mobile regression suite passed 61 tests with one existing skip. The mounted tests verified background cancellation, rejection of provisional text and legacy prefill, preservation of a 21-row invoice and an online meeting link, and review of resolved contacts outside the loaded directory page. The backend regression run passed 52 tests. It covered decimal parsing, lease rent inference, scoped and ambiguous names, response compatibility, and action-specific readiness.
+
+
+## Original behavior
+
+
+Mobile sends a transcript and `requested_fields_only: true` to `POST /api/v1/smartflow/ai/workflow-prefill`. The response travels through `_extract_workflow_prefill_with_ai`, `_sanitize_ai_prefill`, and `_sanitize_ai_value` before the app receives it. An in-process probe executed the checked-out parsing functions on synthetic inputs without calling the provider or database.
+
+
+| Input | Observed backend result | Impact |
+|---|---|---|
+| Model value `"1,5"` | `15.0` | Can change invoice quantity, unit price or tax, lease rent or deposit, or meeting reminder. |
+| Model value `"1.234,50"` | `1.2345` | Can turn 1,234.50 into roughly 1.23 after money rounding. |
+| Model value `"1,,5"` | `15.0` | Malformed input becomes a plausible number. |
+| Rent due day `"4.5"`, `"32"`, or `"invalid"` | `4`, `31`, or `1` respectively | Fractional and invalid days are truncated, clamped, or replaced. This is a shared backend field. The current mobile voice mapper does not bind it. |
+| Legacy transcript price `$1,5` or `$1.234,50` | `15.0` or `1.23` respectively | The fallback uses separate regular expressions and comma deletion. |
+| Legacy transcript `1.5 hours at $10 each` | Quantity `5`, unit price `10.0` | The integer-only regex matches the trailing part of the fractional quantity. |
+| Lease draft prompt `Rent is $1,5 per month`, `Rent is $1.234,50 per month`, or `Deposit is $200` | The fallback returns 1,500, 123, or 20,000 cents respectively | Localized rent is misparsed and a deposit-only prompt can be treated as rent. |
+
+
+Finite JSON numbers retain their value in the current sanitizer. The probe also verified that zero survives and boolean, `NaN`, and infinity are rejected by the floating-point sanitizer. Existing endpoint fixtures cover JSON numbers. They do not prove correctness for localized model strings.
+
+
+## Backend changes
+
+
+| Priority | Location | Required change |
+|---|---|---|
+| High | `app/services/smartflow/_base_mixins/workflow_prefill.py`, `_extract_workflow_prefill_with_ai`, `_coerce_float`, and `_sanitize_ai_prefill` | Explicitly request JSON numbers with no currency symbols or locale separators. Validate the actual response independently of the prompt. Accept finite JSON numbers and parse numeric strings only when their format determines a single value. Parse `"1,5"` as 1.5 and both `"1,234.50"` and `"1.234,50"` as 1234.50. Reject malformed separators and strings such as `"1,234"` when no explicit numeric format disambiguates them. Use decimal parsing internally and keep JSON numbers in the response. |
+| High | `workflow_prefill.py`, `_sanitize_ai_value` and invoice line-item validation | Enforce field constraints before returning the patch. Quantity must be positive and can be fractional. Unit price, rent and deposit must be nonnegative. Tax must be 0–100. Reminder minutes must be an integer from 0–10,080. Rent due day must be an integer from 1–31. Preserve valid zeroes and omit invalid scalar fields from the patch. For an invoice list with an explicitly invalid quantity or price, withhold the unsafe list update while preserving other valid fields. Older mobile builds can replace existing rows with a partial list. Current mobile builds preserve omitted fields on matched rows and default an omitted quantity to 1 on new rows. |
+| High | `app/services/smartflow/_base_mixins/lease_agreement.py`, `_prompt_money_to_cents` and `_normalize_lease_details` | The prompted lease draft separately strips commas and can read the first dollar amount as rent. Parse a complete amount using the same policy and infer only an amount identified as rent. Enter this fallback only when structured rent is absent. The current `amount_cents == 0` check also replaces an explicit zero. Preserve structured cent values as sent and use exact decimal-to-cents conversion for inferred rent. |
+| High if legacy callers remain enabled | `workflow_prefill.py`, `_extract_money_amount` and `_extract_qty_and_price` | Use the shared parser for the entire recognized amount or quantity token. Stop matching only the tail of a decimal quantity or the prefix of an invalid amount. Keep whole-number quantities and the existing total-versus-unit-price rule for valid inputs. Requested-field mobile prefill bypasses this fallback. |
+
+
+The existing save constraints are defined in `app/schemas/invoice.py`, `app/schemas/smartflow/agreements_leases.py`, and `app/schemas/smartflow/calendar.py`. Prefill validation should align with those constraints. This change does not require a database migration or changes to normal manual-entry parsing. Invoice row identity and spoken directory lookup remain separate work under VF-18 and VF-20.
+
+
+## Regression coverage and release verification
+
+
+- Extend the existing FastAPI fixtures in `app/tests/test_ai_workflow_page.py`. Exercise invoice quantity, price and tax, lease rent and deposit, and calendar reminder boundaries. Check that invalid model values leave the original fields intact, valid fields in the same response survive, and explicit zero remains a numeric zero.
+- Verify invoice prefill with a malformed price or quantity cannot send a list that overwrites existing rows or turns the value into a default. Include a valid decimal quantity with a grouped price and compare the reviewed values with the saved totals.
+- Test lease draft generation through `POST /api/v1/smartflow/leases/generate` using a localized rent, a deposit-only prompt, and an explicit zero rent with a conflicting prompt. Assert the draft returns the intended cents.
+- If the legacy fallback is retained, extend `app/tests/test_smartflow_messages.py` with the observed price and fractional-quantity regressions. Retain the existing grouped-number and total-versus-unit-price cases.
+
+
+The parsing failures above were reproduced locally with synthetic inputs. Eight existing FastAPI tests passed across requested-field form extraction and legacy invoice quantity handling. Live provider output frequency and deployed behavior remain unverified.
+
+after updating run the local server and dont push the updated code to the repository.
+
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-25T09:48:36+06:00.
+
+The user's current state is as follows:
+Active Document: c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Backend\scripts\backfill_shared_inbox.py (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Backend\.env (LANGUAGE_UNSPECIFIED)
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Backend\app\api\v1\endpoints\shop.py (LANGUAGE_UNSPECIFIED)
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Website\src\context\TelnyxVoiceContext.test.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Website\src\api\client.test.js (LANGUAGE_UNSPECIFIED)
+- c:\Users\Md Fahim Sarker\Desktop\mabdel-monoripo\Mabdel Website\src\components\inbox\MessageBubble.test.jsx (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>
