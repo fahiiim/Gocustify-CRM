@@ -1,0 +1,121 @@
+# Settings Tab: Backend Fix Requirements
+
+
+This document lists only issues that need backend changes. It does not cover issues that are purely device-local, OS-permission or external-provider problems with no backend side.
+
+
+- **Source audit:** `../MOBILE_SETTINGS_TAB_AUDIT.md` (2026-11-22).
+- **Mobile fixes:** `SETTINGS_TAB_MOBILE_FIX_REPORT.md`.
+- No backend code, schema or data was changed.
+
+
+**Evidence.** Probes **S1–S6** (from the audit) and **F1–F5** (after the mobile fixes) are throwaway pytest files. They run the backend in-process on the repository's mongomock fixtures, with throwaway accounts. External providers (Resend, DNS, push) are faked. Paths are relative to `Mabdel Backend/app/`.
+
+
+---
+
+
+## Critical
+
+
+### BE-S1: Any business can read every business's support conversations
+
+
+| Field | Detail |
+|---|---|
+| Feature | Help & Support: live chat (customers' messages to platform support) |
+| Ownership | Backend-synchronized (`support_sessions`, `support_messages`) |
+| Current behaviour | The owner, supervisor or staff of **any** business can call `GET /api/v1/dashboard/admin/chats` and receive every business's support conversations, including the customer's last message. |
+| Expected | Only platform support staff (super_admin and admin) can see support chats. If tenants have their own support inbox, it is scoped to their organization. |
+| Confirmed root cause | `api/dashboard/admin.py:553-563` allows the tenant roles `owner`, `supervisor` and `staff`. `services/dashboard/dashboard_service.py:454-463` (`get_conversations`) lists every chat with no organization filter. |
+| Evidence | Probe S6. Business A wrote "My card ending 4242 was charged twice". The owner of an unrelated business B received A's conversation, with that text, from `/dashboard/admin/chats`. Replying to A returned 404, so impersonation is **not verified**. |
+| Mobile usage | `ProfileSupportScreen` sends `POST /api/v1/smartflow/support/messages`. Mobile is not involved in the leak. |
+| Website usage | The website support tab uses the same `support/*` routes. The leak is in the dashboard admin routes. |
+| Endpoints | `GET /api/v1/dashboard/admin/chats`, `GET/POST /api/v1/dashboard/admin/chats/{user_id}/messages` |
+| Data | `support_sessions`, `support_messages` |
+| Why mobile can't fix it | Server authorization. |
+| Required change | Restrict these routes to platform `super_admin`/`admin`, or scope every query by the caller's organization. Audit the per-user history and reply routes with the same rule. Add a regression test equivalent to S6. |
+| Dependent mobile workflows | Help & Support chat (privacy of what users write there) |
+| Priority / blocks production | **P0. Blocks production.** |
+
+
+---
+
+
+## High
+
+
+### BE-S2: Change password crashes for accounts without a usable password hash
+
+
+| Field | Detail |
+|---|---|
+| Feature | Change password |
+| Ownership | Backend (`users.password_hash`) |
+| Current behaviour | For Google sign-up accounts (`password_hash: ""`), `POST /smartflow/settings/change-password` raises an unhandled `UnknownHashError`, which becomes HTTP 500. Accounts that have only a legacy `hashed_password` field would raise `KeyError`. |
+| Expected | A clear 400 such as "This account signs in with Google; set a password first", or a set-password flow. Login already reads both field names. |
+| Confirmed root cause | `services/smartflow/smartflow_orchestrator.py:1076-1078` calls `verify_password(current_password, user["password_hash"])` without checking the hash exists (compare `auth_service.py:65`). |
+| Evidence | Probe S4. |
+| Mobile usage | `ProfileChangePasswordScreen` → `authSlice.changePassword`. Mobile shows the server's message, or "Failed to change password." Like the website, mobile doesn't special-case providers. |
+| Why mobile can't fix it | The crash is on the server, and the website shows the same screen. |
+| Required change | Read `password_hash or hashed_password`. If it is empty, return 400 with code `PASSWORD_NOT_SET` instead of verifying. |
+| Priority / blocks production | P1. Social-login users can't change their password. |
+
+
+### BE-S3: Android push goes through the retired legacy FCM endpoint
+
+
+| Field | Detail |
+|---|---|
+| Feature | Push notifications (all notification categories) |
+| Ownership | Hybrid: backend sender, external provider (FCM/APNs), OS permission and the mobile token |
+| Current behaviour | `services/push_notification_service.py:139` posts to `https://fcm.googleapis.com/fcm/send`. `vibrate` is stored on the job but never sent. |
+| Expected | FCM HTTP v1 (`projects/{id}/messages:send`) with a service account. |
+| Root cause | Legacy API. Google retired it in 2024 according to its published deprecation schedule; this was **not verified live**. |
+| Evidence | Code trace. Backend `test_push_notifications.py` passes only because it uses fakes. |
+| Mobile usage | Mobile has not been registering a device yet; see the mobile report (BLOCKED, platform/external). |
+| Required change | Migrate to FCM v1, and send sound/vibrate according to the preferences. |
+| Priority / blocks production | P1 for push, which works nowhere on mobile today. |
+
+
+---
+
+
+## Medium
+
+
+| ID | Feature | Current behaviour | Root cause | Required change | Evidence | Mobile dependency |
+|---|---|---|---|---|---|---|
+| BE-S4 | Session security (logout, password change, "sign out of all devices", account deletion) | Access tokens keep working for up to 30 min after any of these | `dependencies.get_current_user:31-44` has no revocation check; `ACCESS_TOKEN_EXPIRE_MINUTES=30` | Add a per-user `sessions_valid_after` or token-version claim, bump it on logout-all, password change and revoke, and check it in `get_current_user` | Probes S1 and S2 (access token 200 after logout and after a password change) | The mobile "sign out everywhere" and logout both clear the local session; other devices stay signed in until expiry |
+| BE-S5 | Logout scope | Logging out on one device revokes **every** refresh token of the user, so all devices are signed out | `auth_service.logout:371-375` calls `revoke_all_user_tokens` | Revoke only the presented refresh token. Mobile would then need to send it in the logout body (today it sends `{}`), so the mobile side is a follow-up once the backend accepts it. Keep "all devices" for `/settings/revoke-sessions` | Probe S1 | Logout |
+| BE-S6 | Support chat longer than 50 messages | `GET /smartflow/support/messages` returns the **oldest** page first, so new messages never appear | `smartflow_orchestrator.py:930-940` sorts ascending with a fixed page | Return newest-first pages or cursors | Code trace (audit) | Support chat |
+| BE-S8 | Support tickets | Tickets now save (mobile fixed; probe F3 returns 201), but no admin route reads `support_tickets` | No reader exists | Add an admin list/reply for tickets, or remove the feature from both clients | Grep | Create ticket |
+| BE-S9 | Delete account | No re-authentication; organization, email-domain and avatar data are left behind | `DELETE /smartflow/account` (`smartflow_orchestrator.py:803-853`) | Require recent re-authentication on the server, and define a retention or cascade for organization-level data and media | Code trace; backend test `test_account_delete_revokes_access_to_profile_data` | Delete account (the website also has no re-authentication, so this is a server-side policy change) |
+| BE-S10 | Business profile ownership | Stored per **user**: each teammate has a separate business profile, and the AI agent, invoices and agreements read the caller's | `business_profiles` keyed by `user_id` (`settings.py:49-79`) | Decide product behaviour; if it is per business, key it by `organization_id` with an RBAC edit permission | Code trace | Business profile (intended behaviour unknown) |
+
+
+## Low
+
+
+| ID | Feature | Required change |
+|---|---|---|
+| BE-S7 | Clearing business-profile fields | `PATCH /business-profile` drops `None` and empty values, so nothing can be cleared (`smartflow_orchestrator.py:769-790`). Treat `""` as clear. The website and mobile both send `undefined` today, so this needs a coordinated client change afterwards. |
+| BE-S11 | Closing message | `closing_message` is read only by the classic engine, not by the default realtime receptionist (`ai_phone_agent.py:826-838` vs `realtime_receptionist.py`). Use it in the realtime hang-up. |
+| BE-S12 | Notification aliases | The backend silently ignores unknown fields (`notifications_enabled` and others used to be sent by mobile). Consider `extra="forbid"` so clients get a 422. Mobile now sends only the 8 schema fields. |
+
+
+---
+
+
+## Shared root causes
+
+
+- **Session model (BE-S4 and BE-S5):** refresh-token-only revocation plus stateless access tokens. This affects logout, password change, sign-out of all devices and account deletion.
+- **Support data (BE-S1, BE-S6, BE-S8):** the support subsystem lacks tenant scoping, newest-first paging and an admin view for tickets.
+
+
+## Correction to earlier documents
+
+
+`MESSAGE_TAB_BACKEND_FIX_REQUIREMENTS.md` says no push sender exists on the backend. That is wrong. `push_notification_service.py`, `POST /smartflow/devices/push-token` and the preference checks exist. The gaps are BE-S3 above and mobile not registering a device token.
+
