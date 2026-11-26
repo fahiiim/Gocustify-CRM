@@ -3,6 +3,7 @@ from __future__ import annotations
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.exceptions import AppException
+from app.core.security_filters import safe_regex
 
 from ._base import SmartFlowBase
 from .conversation_service import ConversationService
@@ -29,7 +30,7 @@ class HistoryService(SmartFlowBase):
     ) -> dict:
         filters = {"user_id": user_id}
         if search:
-            filters["command_text"] = {"$regex": search, "$options": "i"}
+            filters["command_text"] = safe_regex(search)
         if command_type:
             filters["command_type"] = command_type
         if status_filter:

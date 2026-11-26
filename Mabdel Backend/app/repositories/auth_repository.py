@@ -6,6 +6,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
 
+from app.core.security_filters import safe_regex
 from app.utils.helpers import utc_now
 
 
@@ -163,7 +164,7 @@ class AuthRepository:
         if exclude_user_id and ObjectId.is_valid(exclude_user_id):
             filter_["_id"] = {"$ne": ObjectId(exclude_user_id)}
         if query.strip():
-            pattern = {"$regex": query.strip(), "$options": "i"}
+            pattern = safe_regex(query)
             filter_["$or"] = [{"full_name": pattern}, {"email": pattern}]
         projection = {"full_name": 1, "email": 1, "avatar_url": 1}
         skip = (page - 1) * page_size

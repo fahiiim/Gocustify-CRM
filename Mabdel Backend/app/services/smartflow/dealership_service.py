@@ -115,7 +115,10 @@ class DealershipService:
         # 1. Check custom inventory in MongoDB if present
         if self.db is not None and organization_id:
             try:
-                regex_pattern = "|".join(tokens)
+                escaped_tokens = [re.escape(t.strip()) for t in tokens if t and t.strip()]
+                if not escaped_tokens:
+                    return []
+                regex_pattern = "|".join(escaped_tokens)
                 cursor = self.db.dealership_inventory.find(
                     {
                         "organization_id": organization_id,

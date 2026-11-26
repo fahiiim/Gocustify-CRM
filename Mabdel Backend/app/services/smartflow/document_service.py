@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pymongo import ReturnDocument
 
+from app.core.security_filters import safe_regex
 from app.utils.helpers import utc_now
 
 from ._base import SmartFlowBase
@@ -12,7 +13,7 @@ class DocumentService(SmartFlowBase):
         team_ids = await self._resolve_team_user_ids(user_id)
         filters = {"user_id": {"$in": team_ids}}
         if search:
-            filters["name"] = {"$regex": search, "$options": "i"}
+            filters["name"] = safe_regex(search)
         if doc_type:
             filters["type"] = doc_type
         page_result = await self._paginate(self.db.documents, filters, page, page_size, "created_at")

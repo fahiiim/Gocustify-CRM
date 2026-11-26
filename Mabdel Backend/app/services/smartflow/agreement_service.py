@@ -10,6 +10,7 @@ from pymongo import ReturnDocument
 
 from app.core.config import settings
 from app.core.exceptions import AppException
+from app.core.security_filters import safe_regex
 from app.services.email_service import EmailService
 from app.services.gocustify_ai_service import _get_async_openai_client
 from app.services.smartflow.docusign_agreement_service import DocuSignAgreementService
@@ -43,11 +44,12 @@ class AgreementService(SmartFlowBase):
         # their own dedicated tab/endpoint, so exclude them here unless explicitly requested.
         filters["agreement_type"] = agreement_type if agreement_type else {"$ne": "lease"}
         if search:
+            pattern = safe_regex(search)
             filters["$or"] = [
-                {"title": {"$regex": search, "$options": "i"}},
-                {"client_name": {"$regex": search, "$options": "i"}},
-                {"client_email": {"$regex": search, "$options": "i"}},
-                {"agreement_number": {"$regex": search, "$options": "i"}},
+                {"title": pattern},
+                {"client_name": pattern},
+                {"client_email": pattern},
+                {"agreement_number": pattern},
             ]
 
         total = await self.db.agreements.count_documents(filters)

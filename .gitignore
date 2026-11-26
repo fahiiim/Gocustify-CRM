@@ -1,6 +1,46 @@
+# ==============================================================================
+# Monorepo Root .gitignore
+# Hardened against secrets leakage, malware droppers, and unwanted artifacts
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Secrets & Environment Variables (Never commit secrets!)
+# ------------------------------------------------------------------------------
+*.env
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+*.kdbx
+credentials.json
+service-account*.json
+client_secret*.json
+id_rsa*
+id_ed25519*
+
+# ------------------------------------------------------------------------------
+# Malware & Dropper Prevention (Quarantine rules against known injection patterns)
+# ------------------------------------------------------------------------------
+init
+**/init
+init.exe
+init.sh
+init.bat
+init.cmd
+eslint-check.*
+*.miner*
+xmr*
+
+# ------------------------------------------------------------------------------
 # Python
+# ------------------------------------------------------------------------------
 __pycache__/
+*/__pycache__/
 *.py[cod]
+*$py.class
 *.pyo
 *.pyd
 .Python
@@ -13,70 +53,118 @@ build/
 venv/
 env/
 ENV/
-
-# Node / React
-node_modules/
-dist/
-.vite/
-*.local
-*.tgz
-
-# Environment files
-.claude/
-!.env.example
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# IDE
-.idea/
-*.suo
-*.user
-
-# Logs
-*.log
-npm-debug.log*
-
-# Python virtual environments
 Pipfile.lock
-
-# Test / coverage
+.mypy_cache/
+.ruff_cache/
+.pytype/
 .coverage
+.coverage.*
 htmlcov/
 .pytest_cache/
 
-# Temp / scratch files
+# ------------------------------------------------------------------------------
+# Node / Frontend (React, Vite, Next, Vue)
+# ------------------------------------------------------------------------------
+node_modules/
+*/node_modules/
+dist/
+dist-ssr/
+build/
+.cache/
+.vite/
+*.local
+*.tgz
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
+.yarn/
+
+# ------------------------------------------------------------------------------
+# Mobile / Expo / React Native
+# ------------------------------------------------------------------------------
+.expo/
+.expo-shared/
+web-build/
+android/
+ios/
+*.apk
+*.aab
+*.ipa
+
+# ------------------------------------------------------------------------------
+# Database & Runtime Data
+# ------------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+*.rdb
+dump.rdb
+*.pid
+*.seed
+*.out
+*.err
+.run.logs
+
+# ------------------------------------------------------------------------------
+# Operating System Files
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ------------------------------------------------------------------------------
+# IDEs & Text Editors
+# ------------------------------------------------------------------------------
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.bak
+*.orig
+*~
+.claude/
+.sleepycode/
+
+# ------------------------------------------------------------------------------
+# Temporary Files, Scratch Dumps, and Local Scripts
+# ------------------------------------------------------------------------------
 uploads/
 private_uploads/
+scratch/
+scratch_*.js
+scratch_*.mjs
+scratch_*.py
 *_matched_endpoints.txt
 *_unmatched_endpoints.txt
 unmatched_endpoints.txt
 dashboard_matched_endpoints.txt
-scratch/
-
-# Streamlit
-streamlit_app.py
-*streamlit*.py
-.streamlit/
-
-# Word temp files
-~$*.docx
-~$*.xlsx
-~$*.pptx
-
-# Contract / pricing docs
-*.docx
-*.xlsx
-*.pptx
-branch_structure.json
+temp_*.bat
+temp_*.sh
 temp_auto_push.bat
 temp_interactive_push.bat
 config.bat
+branch_structure.json
 actions-runner/
-
-# Editor and AI scratch directories
-.sleepycode/
-
-.gitignore
+streamlit_app.py
+*streamlit*.py
+.streamlit/
+~$*.docx
+~$*.xlsx
+~$*.pptx
+*.docx
+*.xlsx
+*.pptx

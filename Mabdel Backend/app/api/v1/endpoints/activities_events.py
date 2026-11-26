@@ -11,6 +11,7 @@ from app.dependencies import get_current_user, get_mongo_database
 from app.utils.helpers import utc_now
 from app.utils.responses import success_response
 from app.core.exceptions import AppException
+from app.core.security_filters import safe_regex
 
 router = APIRouter(tags=["Activities & Events"])
 
@@ -98,12 +99,13 @@ async def list_activities(
 ):
     query: dict[str, Any] = {}
     if type and type.lower() != "all":
-        query["category"] = {"$regex": type, "$options": "i"}
+        query["category"] = safe_regex(type)
     if search:
+        pattern = safe_regex(search)
         query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"description": {"$regex": search, "$options": "i"}},
-            {"location": {"$regex": search, "$options": "i"}},
+            {"name": pattern},
+            {"description": pattern},
+            {"location": pattern},
         ]
     
     items = await db.activities.find(query).sort("created_at", -1).to_list(length=100)
@@ -191,14 +193,15 @@ async def list_events(
         and_clauses.append({"organization_id": user_id})
 
     if category and category.lower() != "all":
-        query["category"] = {"$regex": f"^{category}$", "$options": "i"}
+        query["category"] = safe_regex(category, exact=True)
     if search:
+        pattern = safe_regex(search)
         and_clauses.append({
             "$or": [
-                {"title": {"$regex": search, "$options": "i"}},
-                {"description": {"$regex": search, "$options": "i"}},
-                {"hostName": {"$regex": search, "$options": "i"}},
-                {"location": {"$regex": search, "$options": "i"}},
+                {"title": pattern},
+                {"description": pattern},
+                {"hostName": pattern},
+                {"location": pattern},
             ]
         })
     if and_clauses:

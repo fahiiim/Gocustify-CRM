@@ -158,11 +158,25 @@ def create_app() -> FastAPI:
     _MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
 
     @app.middleware("http")
-    async def limit_request_body(request: Request, call_next):
+    async def security_and_nosql_guard(request: Request, call_next):
+        # Reject query parameter keys containing '$' or starting with '.' (NoSQL operator injection defense)
+        for key in request.query_params.keys():
+            if "$" in key or key.startswith("."):
+                return JSONResponse(status_code=400, content={"detail": "Invalid request parameter."})
+
+        # Check body size limit
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > _MAX_BODY_BYTES:
             return JSONResponse(status_code=413, content={"detail": "Request body too large."})
-        return await call_next(request)
+
+        response = await call_next(request)
+
+        # Standard defense-in-depth security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
 
     register_exception_handlers(app)
     app.include_router(compat_router)

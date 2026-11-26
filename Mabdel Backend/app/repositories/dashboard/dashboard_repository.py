@@ -6,6 +6,7 @@ from typing import Any
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.exceptions import AppException
+from app.core.security_filters import safe_regex
 from app.utils.helpers import utc_now
 
 
@@ -107,9 +108,10 @@ class DashboardRepository:
             filters["status"] = status
             
         if search:
+            pattern = safe_regex(search)
             filters["$or"] = [
-                {"full_name": {"$regex": search, "$options": "i"}},
-                {"email": {"$regex": search, "$options": "i"}}
+                {"full_name": pattern},
+                {"email": pattern}
             ]
             
         total = await self.db.users.count_documents(filters)

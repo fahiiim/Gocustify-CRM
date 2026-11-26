@@ -6,6 +6,7 @@ from pymongo import ReturnDocument
 
 from app.core.config import settings
 from app.core.exceptions import AppException
+from app.core.security_filters import safe_regex
 from app.utils.helpers import utc_now
 
 from ._base import SmartFlowBase
@@ -43,18 +44,19 @@ class CallHistoryService(SmartFlowBase):
         if disposition and disposition != "all":
             filters["disposition"] = disposition
         if search:
+            pattern = safe_regex(search)
             filters["$or"] = [
-                {"contact_name": {"$regex": search, "$options": "i"}},
-                {"phone_number": {"$regex": search, "$options": "i"}},
-                {"from_number": {"$regex": search, "$options": "i"}},
+                {"contact_name": pattern},
+                {"phone_number": pattern},
+                {"from_number": pattern},
             ]
             matching_contacts = await self.db.contacts.find(
                 {
                     "user_id": {"$in": team_ids},
                     "$or": [
-                        {"name": {"$regex": search, "$options": "i"}},
-                        {"email": {"$regex": search, "$options": "i"}},
-                        {"phone": {"$regex": search, "$options": "i"}},
+                        {"name": pattern},
+                        {"email": pattern},
+                        {"phone": pattern},
                     ],
                 },
                 {"_id": 1},

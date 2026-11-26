@@ -8,6 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from starlette.datastructures import UploadFile
 
 from app.core.exceptions import AppException
+from app.core.security_filters import safe_search_or, safe_regex
 from app.dependencies import get_current_user, get_mongo_database, require_role
 from app.services.media_storage_service import MediaStorageService
 from app.utils.helpers import utc_now
@@ -33,15 +34,7 @@ def _object_id_or_raw(value: str) -> ObjectId | str:
 
 
 def _search_filter(search: str | None) -> dict[str, Any]:
-    if not search:
-        return {}
-    return {
-        "$or": [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"category": {"$regex": search, "$options": "i"}},
-            {"description": {"$regex": search, "$options": "i"}},
-        ]
-    }
+    return safe_search_or(["name", "category", "description"], search)
 
 
 def get_media_storage_service() -> MediaStorageService:

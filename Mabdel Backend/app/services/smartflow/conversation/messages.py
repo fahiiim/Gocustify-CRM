@@ -5,6 +5,7 @@ from pathlib import Path
 from bson import ObjectId
 from pymongo import ReturnDocument
 from app.core.realtime import conversation_realtime_hub
+from app.core.security_filters import safe_regex
 from app.utils.helpers import utc_now
 
 
@@ -25,7 +26,7 @@ class ConversationMessagesMixin:
             filters["user_id"] = user_id
         # If member but not owner: no user_id filter — fetch all messages in the conversation
         if search:
-            filters["content"] = {"$regex": search, "$options": "i"}
+            filters["content"] = safe_regex(search)
         if platform:
             filters["platform"] = platform
         page_result = await self._paginate(self.db.messages, filters, page, page_size, "timestamp")

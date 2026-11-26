@@ -11,6 +11,7 @@ from pymongo import ReturnDocument
 from app.core.config import settings
 from app.core.crypto import decrypt_value, encrypt_value
 from app.core.exceptions import AppException
+from app.core.security_filters import safe_regex
 from app.utils.helpers import resolve_team_user_ids, utc_now
 
 
@@ -357,7 +358,7 @@ class GoogleCalendarService:
             email = str(attendee.get("email") or "").strip().lower()
             name = attendee.get("displayName") or email or "Attendee"
             if email:
-                contact = await self.db.contacts.find_one({"user_id": user_id, "email": {"$regex": f"^{email}$", "$options": "i"}})
+                contact = await self.db.contacts.find_one({"user_id": user_id, "email": safe_regex(email, exact=True)})
                 if contact:
                     contact_ids.append(str(contact["_id"]))
                     continue

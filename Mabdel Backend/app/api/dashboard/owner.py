@@ -11,6 +11,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.exceptions import AppException
+from app.core.security_filters import safe_regex
 from app.dependencies import get_mongo_database, require_role
 from app.repositories.dashboard.dashboard_repository import DashboardRepository
 
@@ -197,12 +198,13 @@ async def search_users(
 ):
     await _resolve_owner_role(current_user, db)
 
+    regex_q = safe_regex(q)
     results = await db.users.find(
         {
             "$or": [
-                {"email": {"$regex": q, "$options": "i"}},
-                {"full_name": {"$regex": q, "$options": "i"}},
-                {"name": {"$regex": q, "$options": "i"}},
+                {"email": regex_q},
+                {"full_name": regex_q},
+                {"name": regex_q},
             ]
         },
         {"email": 1, "full_name": 1, "name": 1, "role": 1, "profilePhoto": 1, "profile_photo": 1},

@@ -8,6 +8,7 @@ from app.utils.helpers import utc_now
 from app.dependencies import get_dashboard_service
 from app.services.dashboard.dashboard_service import DashboardService
 from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security_filters import safe_regex, safe_search_or
 from app.core.exceptions import AppException
 from app.schemas.dashboard_schemas import (
     BaseResponse, DashboardSummary, GrowthMetrics, PaginatedResponse, 
@@ -43,9 +44,7 @@ def _serialize_doc(doc: dict) -> dict:
 
 
 def _search_filter(search: str | None, fields: list[str]) -> dict:
-    if not search:
-        return {}
-    return {"$or": [{field: {"$regex": search, "$options": "i"}} for field in fields]}
+    return safe_search_or(fields, search)
 
 
 def _current_user_id(current_user: dict) -> str:
@@ -1213,11 +1212,12 @@ async def list_owners(
         
     query_filter = {"role": "owner"}
     if search:
+        pattern = safe_regex(search)
         query_filter["$or"] = [
-            {"full_name": {"$regex": search, "$options": "i"}},
-            {"email": {"$regex": search, "$options": "i"}},
-            {"original_email": {"$regex": search, "$options": "i"}},
-            {"business_name": {"$regex": search, "$options": "i"}}
+            {"full_name": pattern},
+            {"email": pattern},
+            {"original_email": pattern},
+            {"business_name": pattern}
         ]
         
     total = await db.users.count_documents(query_filter)
