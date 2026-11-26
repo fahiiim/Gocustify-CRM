@@ -257,9 +257,28 @@ export default function AIReceptionist() {
   const [sampleQueries, setSampleQueries] = useState([]);
 
   // ── Computed Business Info ──
+  const replaceTemplateBusinessNames = (text, targetName) => {
+    if (!text || typeof text !== 'string') return text;
+    return text
+      .replace(/BrightSmile Dental Care/g, targetName)
+      .replace(/Sterling & Vance Legal Counsel/g, targetName)
+      .replace(/Sterling Law/g, targetName)
+      .replace(/Metro Community Health/g, targetName)
+      .replace(/Metro Health Clinic/g, targetName)
+      .replace(/Spine & Wellness Chiropractic/g, targetName)
+      .replace(/Radiant Health & Wellness Center/g, targetName)
+      .replace(/Radiant Wellness/g, targetName)
+      .replace(/Horizon Realty Group/g, targetName)
+      .replace(/Apex Home Comfort & Repair/g, targetName)
+      .replace(/Apex Motors/g, targetName)
+      .replace(/Apex CPA & Advisory/g, targetName)
+      .replace(/Paws & Whiskers Animal Hospital/g, targetName);
+  };
+
   const activeBusinessName =
     businessProfile?.business_name ||
     user?.business_name ||
+    user?.organization_name ||
     user?.company_name ||
     (user?.full_name ? `${user.full_name}'s Office` : 'My Business');
 
@@ -432,13 +451,7 @@ export default function AIReceptionist() {
         if (preset.sample_test_queries && preset.sample_test_queries.length > 0) {
           const dynamicQueries = preset.sample_test_queries.map((q) => ({
             ...q,
-            reply: (q.reply || '')
-              .replace(/BrightSmile Dental Care/g, bName)
-              .replace(/Sterling & Vance Legal Counsel/g, bName)
-              .replace(/Sterling Law/g, bName)
-              .replace(/Metro Community Health/g, bName)
-              .replace(/Radiant Health & Wellness Center/g, bName)
-              .replace(/Radiant Wellness/g, bName),
+            reply: replaceTemplateBusinessNames(q.reply || '', bName),
           }));
           setSampleQueries(dynamicQueries);
 
@@ -467,18 +480,10 @@ export default function AIReceptionist() {
 
         // Formulate personalized greeting templates substituting dynamic business name
         let customizedInbound = preset.inbound_greeting || `Thank you for calling ${bName}. How can I assist you today?`;
-        customizedInbound = customizedInbound
-          .replace(/BrightSmile Dental Care/g, bName)
-          .replace(/Sterling & Vance Legal Counsel/g, bName)
-          .replace(/Metro Community Health/g, bName)
-          .replace(/Radiant Health & Wellness Center/g, bName);
+        customizedInbound = replaceTemplateBusinessNames(customizedInbound, bName);
 
         let customizedOutbound = preset.outbound_greeting || `Hi {first_name}, this is ${bName} with a quick reminder about your appointment on {date} at {time}.`;
-        customizedOutbound = customizedOutbound
-          .replace(/BrightSmile Dental Care/g, bName)
-          .replace(/Sterling Law/g, bName)
-          .replace(/Metro Health Clinic/g, bName)
-          .replace(/Radiant Wellness/g, bName);
+        customizedOutbound = replaceTemplateBusinessNames(customizedOutbound, bName);
 
         // Update Greetings in Settings
         setCallSettings((prev) => ({
