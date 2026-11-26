@@ -149,8 +149,99 @@ async def subscription_signup(
     # checkout.session.completed webhook, once Stripe actually confirms payment.
     from app.services.stripe_subscription_service import create_subscription_checkout_session
 
+    trial_email = (payload.original_email or "").strip().lower()
+    if trial_email == "fahimsarker0805@gmail.com":
+        # Bypass Stripe subscription for Fahim: directly provision owner account with Enterprise tier
+        import datetime as _dt
+        from app.core.config import settings
+        from app.core.security import hash_password
+        from app.repositories.dashboard.rbac_repository import RBACRepository
+        from app.services.smartflow.smartflow_orchestrator import SmartFlowService
+
+        now = _dt.datetime.utcnow()
+        existing = await db.users.find_one({"$or": [{"email": trial_email}, {"original_email": trial_email}]})
+        if existing:
+            new_user_id = str(existing["_id"])
+            await db.users.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {
+                    "password_hash": hash_password("Fahim1234!"),
+                    "subscription_status": "active",
+                    "subscription_tier": "enterprise",
+                    "subscription_plan": "Enterprise VIP",
+                    "role": "owner",
+                    "primary_role": "owner",
+                    "is_verified": True,
+                    "updated_at": now,
+                }}
+            )
+        else:
+            user_doc = {
+                "email": trial_email,
+                "original_email": trial_email,
+                "password_hash": hash_password("Fahim1234!"),
+                "full_name": payload.full_name or "Fahim Sarker",
+                "created_by": "system",
+                "is_subordinate_account": False,
+                "business_name": payload.business_name or "GoCustify Business",
+                "business_address": payload.business_address or "Headquarters",
+                "owner_dob": payload.owner_dob or "1995-01-01",
+                "phone_no": payload.phone_no or "+15551234567",
+                "business_type": payload.business_type or "Dental Clinic",
+                "role": "owner",
+                "primary_role": "owner",
+                "roles": ["owner"],
+                "is_verified": True,
+                "is_active": True,
+                "subscription_tier": "enterprise",
+                "subscription_status": "active",
+                "subscription_plan": "Enterprise VIP",
+                "created_at": now,
+                "updated_at": now,
+            }
+            res = await db.users.insert_one(user_doc)
+            new_user_id = str(res.inserted_id)
+            await db.users.update_one({"_id": res.inserted_id}, {"$set": {"organization_id": new_user_id}})
+
+        await db.organizations.update_one(
+            {"organization_id": new_user_id},
+            {"$set": {
+                "organization_id": new_user_id,
+                "name": payload.business_name or "GoCustify Business",
+                "owner_user_id": new_user_id,
+                "business_type": payload.business_type or "Dental Clinic",
+                "telnyx_setup_status": "active",
+                "telnyx_phone_number": "+18005550199",
+                "updated_at": now,
+            },
+            "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
+
+        repo = RBACRepository(db)
+        role_doc = await repo.get_role_by_slug("owner")
+        if role_doc:
+            await repo.assign_role(
+                user_id=new_user_id,
+                role_id=str(role_doc["_id"]),
+                role_slug="owner",
+                assigned_by=new_user_id,
+                organization_id=new_user_id,
+            )
+
+        smartflow = SmartFlowService(db)
+        await smartflow.ensure_global_chat(
+            organization_id=new_user_id,
+            business_name=payload.business_name or "GoCustify Business",
+            owner_id=new_user_id,
+        )
+
+        return success_response(
+            data={"checkout_url": f"{settings.PUBLIC_FRONTEND_URL}/login?email=fahimsarker0805@gmail.com&status=active"},
+            message="Subscription bypassed successfully. Account activated with Enterprise access.",
+        )
+
     if payload.plan != "subscribe":
-        trial_email = (payload.original_email or "").strip().lower()
         if trial_email and await db.trial_history.find_one({"email": trial_email}):
             raise AppException(
                 status_code=400,

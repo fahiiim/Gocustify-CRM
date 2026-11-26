@@ -54,7 +54,7 @@ function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
-          <Route path="/subscription" element={<Subscription />} />
+          <Route path="/subscription" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Subscription />} />
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="/privacy-policy" element={<ContentPage forcedSlug="privacy-policy" />} />
           <Route path="/terms-and-conditions" element={<ContentPage forcedSlug="terms-and-conditions" />} />
