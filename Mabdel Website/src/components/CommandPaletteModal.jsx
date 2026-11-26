@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -16,7 +16,6 @@ import {
   Users2,
   Plug,
   ArrowRight,
-  Command,
 } from 'lucide-react';
 import { PLATFORM_FEATURES } from './FeatureHubLaunchpad';
 

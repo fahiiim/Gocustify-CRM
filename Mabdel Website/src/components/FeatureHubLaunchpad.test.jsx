@@ -1,8 +1,7 @@
-import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
-import FeatureHubLaunchpad, { PLATFORM_FEATURES } from './FeatureHubLaunchpad';
+import FeatureHubLaunchpad from './FeatureHubLaunchpad';
 
 describe('FeatureHubLaunchpad Component', () => {
   it('renders all platform features and category filter pills', () => {

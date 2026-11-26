@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import axios from 'axios';
-import client, { refreshAccessToken } from './client';
+import { refreshAccessToken } from './client';
 
 vi.mock('axios', async () => {
   const actual = await vi.importActual('axios');

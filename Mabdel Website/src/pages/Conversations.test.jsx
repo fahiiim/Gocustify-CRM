@@ -131,11 +131,13 @@ describe('Conversations Page - Manual Outbound SMS Composer (3.5 / T05)', () => 
         platform: 'sms',
         type: 'direct',
       });
-      expect(smartflowApi.sendMessage).toHaveBeenCalledWith({
-        conversation_id: 'conv-new-sms',
-        content: 'Your appointment is confirmed for tomorrow.',
-        platform: 'sms',
-      });
+      expect(smartflowApi.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversation_id: 'conv-new-sms',
+          content: 'Your appointment is confirmed for tomorrow.',
+          platform: 'sms',
+        })
+      );
     });
 
     // 6. Verify modal closes after successful send

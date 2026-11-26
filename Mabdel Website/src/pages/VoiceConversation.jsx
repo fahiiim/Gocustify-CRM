@@ -722,7 +722,7 @@ export default function VoiceConversation() {
     return t('vcon_status_ready');
   }, [isListening, isThinking, permissionState, t, workflowBusy]);
 
-  const renderSidebarContent = () => (
+  const sidebarContent = (
     <>
       <div>
         <h2 className="text-white font-bold text-lg flex items-center gap-2">
@@ -918,7 +918,7 @@ export default function VoiceConversation() {
 
       {/* Desktop Sidebar */}
       <div className="w-80 border-r border-[#243041]/40 bg-slate-950/20 p-6 hidden lg:flex flex-col gap-6 overflow-y-auto custom-scrollbar">
-        {renderSidebarContent()}
+        {sidebarContent}
       </div>
 
       {/* Mobile Sidebar Overlay / Drawer */}
@@ -941,7 +941,7 @@ export default function VoiceConversation() {
                 <X size={16} />
               </button>
             </div>
-            {renderSidebarContent()}
+            {sidebarContent}
           </div>
         </div>
       )}

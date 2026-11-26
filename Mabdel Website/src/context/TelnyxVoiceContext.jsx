@@ -290,19 +290,25 @@ export function TelnyxVoiceProvider({ children }) {
     [finalizeCall, incomingCall]
   );
 
+  const initClientRef = useRef();
+  const scheduleRefreshRef = useRef();
+
   const scheduleRefresh = useCallback((delaySeconds) => {
     clearRefreshTimer();
     const delayMs = Math.max(60, delaySeconds || 0) * 1000;
     refreshTimerRef.current = window.setTimeout(() => {
       // Never swap the socket out from under a live call — check back shortly instead.
       if (currentCallRef.current) {
-        refreshTimerRef.current = window.setTimeout(() => scheduleRefresh(300), 300000);
+        refreshTimerRef.current = window.setTimeout(() => scheduleRefreshRef.current?.(300), 300000);
         return;
       }
-      initClient();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      initClientRef.current?.();
     }, delayMs);
   }, []);
+
+  useEffect(() => {
+    scheduleRefreshRef.current = scheduleRefresh;
+  }, [scheduleRefresh]);
 
   const initClient = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -385,6 +391,10 @@ export function TelnyxVoiceProvider({ children }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, pushRegistration, handleNotification, scheduleRefresh]);
+
+  useEffect(() => {
+    initClientRef.current = initClient;
+  }, [initClient]);
 
   useEffect(() => {
     if (!isAuthenticated) {
