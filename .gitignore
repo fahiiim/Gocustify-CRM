@@ -125,6 +125,8 @@ desktop.ini
 # IDEs & Text Editors
 # ------------------------------------------------------------------------------
 .idea/
+.vscode/tasks.json
+.vscode/eslint*
 *.suo
 *.user
 *.userosscache

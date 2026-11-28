@@ -109,6 +109,7 @@ jobs:
             fi
             git remote set-url origin "$REPO_URL"
             git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
             git reset --hard "origin/$BRANCH"
             git clean -fd -e "uploads" -e "private_uploads" -e "*.env*"
 

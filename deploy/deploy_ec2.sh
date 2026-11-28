@@ -48,6 +48,7 @@ else
   echo "[*] Fetching latest changes from $REPO_URL ($BRANCH)..."
   git remote set-url origin "$REPO_URL"
   git fetch origin "$BRANCH"
+  git checkout -B "$BRANCH" "origin/$BRANCH"
   git reset --hard "origin/$BRANCH"
   # Clean untracked files while preserving uploads and env files
   git clean -fd -e "uploads" -e "private_uploads" -e "*.env*"
